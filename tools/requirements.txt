@@ -1,0 +1,4 @@
+# Build-time only; committed assets work without Python packages at runtime.
+Pillow==12.3.0
+PyMuPDF==1.26.6
+qrcode==8.2

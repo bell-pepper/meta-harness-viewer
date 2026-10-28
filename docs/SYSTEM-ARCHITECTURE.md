@@ -33,11 +33,15 @@ An installed web-app entry offers the documented route to an icon/tile launch. A
 
 A custom iOS app is optional unless a specific authorization, storage, or background requirement calls for one. Keep the native prototype as an alternative; do not require Xcode merely to try a glasses web app.
 
+## Current web milestone
+
+The app now includes Meta's input-routing tag, launcher identity metadata, white-on-transparent PNG icons, a phone installation page/QR, and an internal two-page viewer using prepared PDF images. The viewer has page boundaries, zoom, bounded movement, and no URL entry. Browser regression tests pass; Meta's official manifest validator accepts the metadata. Installation on the user's glasses and actual PDF readability remain unverified. Private Drive access and arbitrary-PDF loading are not implemented.
+
 ## What remains to build or verify
 
 1. Test adding a known official sample, then our existing HTTPS URL, through Meta's documented Web Apps installation path. Verify an app-grid entry and real navigation. Our existing website has not been installed/tested on the glasses.
-2. Add the correct MRBD metadata and icon, and use the Display toolkit/focus behavior. Ordinary PWA metadata alone is not proof of proper glasses integration.
-3. Replace the paste-a-link form and external Google viewer tabs with a saved document menu and an in-app viewer. Pop-up/tab behavior and Google's viewer are not verified on glasses.
+2. MRBD metadata/icon and explicit directional focus are implemented. Test actual glasses focus behavior; the full Display UI toolkit has not been adopted. Ordinary PWA metadata alone is not proof of proper glasses integration.
+3. The paste-a-link form is replaced by a saved demo menu and in-app image viewer. Extend it to real documents after hardware validation; arbitrary PDF and Google Drive access remain unimplemented.
 4. Investigate PDF.js or pre-rendered page tiles under the documented low CPU/bandwidth budgets. Large dense PDFs may require preprocessing. Keep technical labels and revision identifiers legible.
 5. Choose a private Drive access design. A static GitHub Pages app cannot automatically read private Drive files; Google OAuth, CORS, token handling, refresh, and consent rules must be established. A phone-based authorization/setup flow and an authenticated backend may be appropriate. Public links must not be required for private engineering files. Do not promise live Drive folder browsing until this is implemented and tested.
 6. Verify cookies/storage persistence, network availability, cache limits, suspend/resume, and whether the phone is needed for connectivity. A website being reachable from the phone does not validate these properties.

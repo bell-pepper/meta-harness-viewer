@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Harness HUD",
+  "description": "Harness pinouts and saved datasheets for your display.",
+  "appearance": {
+    "theme_color": "#FFFFFF",
+    "icon": { "src": "../icons/icon-512.png", "type": "monochrome" }
+  }
+}
