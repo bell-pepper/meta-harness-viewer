@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#000000">
+<meta name="description" content="A keyboard-first harness reference HUD for a 600 by 600 display.">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Harness HUD</title>
+<style>
+:root{color-scheme:dark;font-family:Arial,Helvetica,sans-serif;background:#000;color:#fff;font-size:24px}*{box-sizing:border-box}body{margin:0}#hud{width:100%;max-width:600px;min-height:100svh;margin:auto;padding:20px;display:flex;flex-direction:column;gap:12px}header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #707070;padding-bottom:8px;font-size:18px;letter-spacing:.08em;color:#ddd}h1{font-size:32px;line-height:1.1;margin:0 0 12px}h2{font-size:28px;margin:0 0 12px}p{line-height:1.25;margin:10px 0}.muted{color:#ccc;font-size:20px}nav{display:grid;gap:10px}button,a.action{font:inherit;font-weight:700;display:block;text-align:left;width:100%;background:#151515;color:#fff;border:2px solid #777;border-radius:8px;padding:12px;text-decoration:none;cursor:pointer}button:focus,a:focus,input:focus{outline:4px solid #fff;outline-offset:3px;background:#fff;color:#000}button small{display:block;font-size:18px;font-weight:400;margin-top:6px}footer{margin-top:auto;border-top:1px solid #666;padding-top:12px;font-size:17px;color:#ccc}.card{border:2px solid #777;border-radius:8px;padding:12px}.tag{font-size:17px;letter-spacing:.06em;color:#ccc}table{width:100%;border-collapse:collapse;font-size:23px}th,td{text-align:left;border-bottom:1px solid #666;padding:10px 4px}th{font-size:18px;color:#ccc}label{display:block;font-size:20px;margin:16px 0 8px}input{width:100%;font:inherit;font-size:20px;color:#fff;background:#151515;border:2px solid #777;padding:12px;border-radius:6px}#message{font-size:19px}ol{padding-left:30px;line-height:1.5}@media(max-width:400px){#hud{padding:18px}h1{font-size:30px}:root{font-size:22px}}@media(min-width:600px){#hud{min-height:600px}} 
+</style>
+</head>
+<body>
+<div id="hud"><header><span>HARNESS / HUD</span><span id="position">HOME</span></header><main id="screen"></main><footer>↑ ↓ ← → Navigate · Enter Select<br>Esc / Backspace Back</footer></div>
+<script>
+'use strict';
+const screen = document.getElementById('screen');
+const position = document.getElementById('position');
+let route = 'home', step = 0;
+const history = [];
+const steps = [
+ ['Prepare the wire','Cut one 20 AWG sample wire to the length specified by your approved drawing.','Confirm wire ID and inspect the insulation.'],
+ ['Strip and terminate','Strip to the terminal manufacturer’s specified length. Crimp with the approved tool.','Inspect the crimp and perform the required retention check.'],
+ ['Insert and inspect','Insert the terminal into cavity 1 until the retention feature engages.','Verify cavity, terminal seating and continuity against the approved drawing.']
+];
+function go(next){history.push({route,step});route=next;render();}
+function back(){const previous=history.pop();if(previous){route=previous.route;step=previous.step;render();}}
+function render(){
+ position.textContent=route==='home'?'HOME':route==='assembly'?`${step+1} / 3`:route.toUpperCase();
+ if(route==='home')screen.innerHTML='<h1>Field reference</h1><p class="muted">Select a workspace</p><nav aria-label="Main menu"><button data-go="pinouts">Pinouts<small>Connector cavities & signals</small></button><button data-go="documents">Documents<small>Google Docs & Drive PDFs</small></button><button data-go="quick">Quick Reference<small>Assembly steps & checks</small></button></nav>';
+ if(route==='pinouts')screen.innerHTML='<h1>Connector J1</h1><p class="tag">EXAMPLE ONLY · MATING FACE</p><div class="card"><h2>4-position connector</h2><table><thead><tr><th scope="col">Pin</th><th scope="col">Signal</th><th scope="col">Wire</th></tr></thead><tbody><tr><td>1</td><td>+12 V</td><td>Red</td></tr><tr><td>2</td><td>Ground</td><td>Black</td></tr><tr><td>3</td><td>CAN H</td><td>White</td></tr><tr><td>4</td><td>CAN L</td><td>Blue</td></tr></tbody></table></div><p class="muted">Use the approved drawing for actual wiring and connector orientation.</p><button data-back>Back</button>';
+ if(route==='quick')screen.innerHTML='<h1>Quick Reference</h1><nav><button data-go="assembly">Harness assembly<small>Three example steps</small></button><button data-go="checks">Inspection checklist<small>Before releasing a harness</small></button><button data-back>Back</button></nav>';
+ if(route==='checks')screen.innerHTML='<h1>Inspection</h1><ol><li>Verify drawing revision.</li><li>Check wire IDs and cavities.</li><li>Inspect crimps and strain relief.</li><li>Test continuity and isolation.</li></ol><p class="muted">Follow your approved acceptance criteria.</p><button data-back>Back</button>';
+ if(route==='assembly'){const s=steps[step];screen.innerHTML=`<h1>${s[0]}</h1><p class="tag">EXAMPLE ASSEMBLY · STEP ${step+1} OF 3</p><div class="card"><p>${s[1]}</p><p class="muted">Check: ${s[2]}</p></div><nav style="margin-top:12px"><button id="next">${step===2?'Finish':'Next step →'}</button>${step?'<button id="previous">← Previous step</button>':''}<button data-back>Back to reference</button></nav>`;document.getElementById('next').onclick=()=>{if(step<2){step++;render();}else back();};const prev=document.getElementById('previous');if(prev)prev.onclick=()=>{step--;render();};}
+ if(route==='documents'){
+ screen.innerHTML='<h1>Documents</h1><p class="muted">Paste a public Google Docs or Google Drive PDF link. Opens in a new tab.</p><form id="document-form"><label for="url">Public document URL</label><input id="url" type="url" required placeholder="https://docs.google.com/document/d/…" autocomplete="off"><p id="message" role="status">Set sharing to “Anyone with the link”.</p><button type="submit">Open document ↗</button></form><p class="muted">Google’s viewer requires internet and may require navigation outside this HUD.</p><button data-back>Back</button>';
+ document.getElementById('document-form').onsubmit=e=>{e.preventDefault();const value=document.getElementById('url').value.trim();try{const u=new URL(value);const doc=u.hostname==='docs.google.com'&&/^\/document\/d\/[A-Za-z0-9_-]+(?:\/|$)/.test(u.pathname);const drive=u.hostname==='drive.google.com'&&(/^\/file\/d\/[A-Za-z0-9_-]+(?:\/|$)/.test(u.pathname)||(u.pathname==='/open'&&/^[A-Za-z0-9_-]+$/.test(u.searchParams.get('id')||'')));if(u.protocol!=='https:'||u.username||u.password||u.port||(!doc&&!drive))throw Error();const tab=window.open(u.href,'_blank','noopener,noreferrer');document.getElementById('message').textContent='Opening document. If no tab appears, allow pop-ups for this site.';}catch{document.getElementById('message').textContent='Use an HTTPS Google Docs document or Google Drive file sharing link.';}};
+ }
+ screen.querySelectorAll('[data-go]').forEach(el=>el.onclick=()=>{if(el.dataset.go==='assembly')step=0;go(el.dataset.go);});
+ screen.querySelectorAll('[data-back]').forEach(el=>el.onclick=back);
+ screen.querySelector('button, input, a')?.focus();window.scrollTo(0,0);
+}
+document.addEventListener('keydown',e=>{
+ const editing=e.target.matches('input, textarea');
+ if(e.key==='Escape'||(e.key==='Backspace'&&!editing)){e.preventDefault();back();return;}
+ if(editing)return;
+ if(['ArrowDown','ArrowRight','ArrowUp','ArrowLeft'].includes(e.key)){e.preventDefault();const items=[...screen.querySelectorAll('button, input, a[href]')];const delta=['ArrowDown','ArrowRight'].includes(e.key)?1:-1;const i=items.indexOf(document.activeElement);items[(i+delta+items.length)%items.length]?.focus();}
+});
+render();
+</script>
+</body>
+</html>

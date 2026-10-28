@@ -1,0 +1,12 @@
+{
+  "id": "./",
+  "name": "Harness HUD",
+  "short_name": "Harness HUD",
+  "description": "Keyboard-first harness references for a 600×600 display.",
+  "lang": "en",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}
