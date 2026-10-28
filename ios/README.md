@@ -1,6 +1,6 @@
 # Harness HUD — native iPhone companion prototype
 
-This is the native path to Meta Ray-Ban Display. The GitHub Pages site is a separate browser prototype; installing its Home Screen shortcut does not install an app on the glasses.
+This is an optional native companion path to Meta Ray-Ban Display. A separate official on-glasses Web Apps platform has now been identified and is the preferred path to test for the glasses app-grid icon requirement; see [the corrected architecture review](../docs/SYSTEM-ARCHITECTURE.md). An iPhone Home Screen shortcut is separate from Meta Web Apps registration.
 
 ## Current implementation and validation status
 
