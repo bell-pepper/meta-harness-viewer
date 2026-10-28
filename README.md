@@ -30,6 +30,14 @@ This version does **not** load arbitrary PDFs, connect Google Drive, sync folder
 
 All pinouts and assembly instructions are examples. Use approved engineering data and acceptance criteria for actual harness work.
 
+## Document catalog foundation
+
+The viewer now reads `assets/documents.json` instead of assuming one two-page document. Entries have an ID, title, optional revision, and a nonempty list of prepared page-image URLs. Paths resolve relative to that catalog. Different documents may have different page counts. Documents offers Refresh and handles empty libraries and connection failures.
+
+This catalog is public on GitHub Pages. It is not a Google Drive connection, and it must not contain credentials or private document links. Live folder access remains pending the source-folder details and its privacy requirements. Do not change Google sharing settings merely to use this foundation.
+
+The additional browser test `tests/library.cjs` checks multiple documents, variable page counts, title escaping, empty libraries, failed refreshes, and invalid page addresses. Run it using the same Playwright setup as `tests/webapp.cjs`.
+
 ## Controls
 
 - Arrow keys move focus. In the viewer's two-row toolbar, Up/Down move between rows and Left/Right move between actions, skipping disabled controls.

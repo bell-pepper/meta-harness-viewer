@@ -21,6 +21,7 @@ const base = process.env.HARNESS_TEST_URL || 'http://127.0.0.1:8090/meta-harness
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   assert.equal(await page.locator('input').count(), 0, 'glasses library requires no typing');
+  await page.locator('#demo-document').waitFor();
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => document.querySelector('#page-image')?.naturalWidth > 0 && document.querySelector('#page-status')?.hidden);
   assert.equal(await page.locator('#position').innerText(), 'PAGE 1 / 2');

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "id": "demo",
+      "title": "Harness test datasheet",
+      "revision": "Example only · Rev A",
+      "pages": ["demo/page-1.png", "demo/page-2.png"]
+    }
+  ]
+}

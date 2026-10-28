@@ -13,7 +13,57 @@ let moving = false;
 let toolsOpen = false;
 let imageReady = false;
 let renderID = 0;
-const pageCount = 2;
+let documents = [];
+let selectedDocument = null;
+let pageCount = 0;
+let libraryLoading = false;
+let libraryError = '';
+let libraryRequest = null;
+const catalogURL = new URL('assets/documents.json', document.baseURI);
+function escapeText(value) {
+ return String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+}
+function parseCatalog(data) {
+ if (data?.version !== 1 || !Array.isArray(data.documents) || data.documents.length > 1000) throw new Error('Invalid document library.');
+ const ids = new Set();
+ return data.documents.map(item => {
+  if (typeof item.id !== 'string' || !item.id || ids.has(item.id) || typeof item.title !== 'string' || !item.title.trim() || !Array.isArray(item.pages) || !item.pages.length || item.pages.length > 2000) throw new Error('Invalid document entry.');
+  ids.add(item.id);
+  const pages = item.pages.map(source => {
+   if (typeof source !== 'string' || !source) throw new Error('Invalid page address.');
+   const url = new URL(source, catalogURL);
+   if (url.username || url.password || (url.origin !== location.origin && url.protocol !== 'https:') || !['https:', 'http:'].includes(url.protocol)) throw new Error('Unsupported page address.');
+   return url.href;
+  });
+  return {id:item.id, title:item.title, revision:typeof item.revision === 'string' ? item.revision : '', pages};
+ });
+}
+async function loadLibrary() {
+ if (libraryRequest) return libraryRequest;
+ libraryLoading = true; libraryError = '';
+ if (route === 'documents') render();
+ libraryRequest = (async () => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+   const response = await fetch(catalogURL, {cache:'no-store', signal:controller.signal});
+   if (!response.ok) throw new Error('Could not load the document library.');
+   const loaded = parseCatalog(await response.json());
+   documents = loaded;
+  } catch { libraryError = 'Could not load documents. Check your connection and select Retry.'; }
+  finally {
+   clearTimeout(timeout); libraryLoading = false; libraryRequest = null;
+   if (route === 'documents') render();
+  }
+ })();
+ return libraryRequest;
+}
+function openDocument(index) {
+ const selected = documents[index];
+ if (!selected) return;
+ selectedDocument = selected; pageCount = selected.pages.length;
+ go('reader');
+}
 const steps = [
  ['Prepare the wire', 'Cut one sample wire to the length specified by your approved drawing.', 'Confirm wire ID and inspect the insulation.'],
  ['Strip and terminate', 'Strip to the terminal manufacturer’s specified length. Crimp with the approved tool.', 'Inspect the crimp and perform the required retention check.'],
@@ -30,6 +80,7 @@ function go(next) {
  if (next === 'assembly') step = 0;
  if (next === 'reader') { page = 0; resetView(); }
  render();
+ if (next === 'documents' && !documents.length && !libraryLoading) loadLibrary();
 }
 function back() {
  if (moving) { moving = false; toolsOpen = false; }
@@ -54,7 +105,12 @@ function render(focusID) {
  hint.textContent = 'Arrows Navigate · Enter Select · Back Return';
  if (route === 'home') screen.innerHTML = `<h1>Field reference</h1><p class="muted">Choose a workspace</p><nav aria-label="Main menu"><button id="home-pinouts" data-go="pinouts">Pinouts<small>Connector cavities & signals</small></button><button id="home-documents" data-go="documents">Documents<small>Saved datasheets · no typing</small></button><button id="home-quick" data-go="quick">Quick Reference<small>Assembly steps & checks</small></button></nav>`;
  if (route === 'pinouts') screen.innerHTML = `<h1>Connector J1</h1><p class="tag">EXAMPLE ONLY · MATING FACE</p><div class="card"><h2>4-position connector</h2><table><thead><tr><th scope="col">Pin</th><th scope="col">Signal</th><th scope="col">Wire</th></tr></thead><tbody><tr><td>1</td><td>+12 V</td><td>Red</td></tr><tr><td>2</td><td>Ground</td><td>Black</td></tr><tr><td>3</td><td>CAN H</td><td>White</td></tr><tr><td>4</td><td>CAN L</td><td>Blue</td></tr></tbody></table></div><p class="muted">Use the approved drawing for actual wiring and orientation.</p><button data-back>Back</button>`;
- if (route === 'documents') screen.innerHTML = `<h1>Documents</h1><p class="muted">Choose a saved datasheet</p><nav><button id="demo-document" data-go="reader">Harness test datasheet<small>2 pages · pinout & inspection</small></button><button data-back>Back</button></nav><p class="muted">Example data only. Google Drive connection comes later.</p>`;
+ if (route === 'documents') {
+  screen.innerHTML = `<h1>Documents</h1>${libraryLoading ? '<p role="status">Loading documents…</p>' : libraryError ? `<p role="alert">${escapeText(libraryError)}</p>` : '<p class="muted">Choose a datasheet</p>'}<nav>${libraryError || libraryLoading ? '' : documents.map((doc, index) => `<button id="${doc.id === 'demo' ? 'demo-document' : `document-${index}`}" data-document="${index}">${escapeText(doc.title)}<small>${doc.pages.length} ${doc.pages.length === 1 ? 'page' : 'pages'}${doc.revision ? ` · ${escapeText(doc.revision)}` : ''}</small></button>`).join('')}${!libraryLoading ? `<button id="refresh-library">${libraryError ? 'Retry' : 'Refresh documents'}</button>` : ''}<button data-back>Back</button></nav>${!documents.length && !libraryLoading && !libraryError ? '<p class="muted">No documents are available.</p>' : ''}`;
+  screen.querySelectorAll('[data-document]').forEach(el => el.onclick = () => openDocument(Number(el.dataset.document)));
+  const refresh = document.getElementById('refresh-library');
+  if (refresh) refresh.onclick = loadLibrary;
+ }
  if (route === 'quick') screen.innerHTML = `<h1>Quick Reference</h1><nav><button id="assembly" data-go="assembly">Harness assembly<small>Three example steps</small></button><button id="checks" data-go="checks">Inspection checklist<small>Before releasing a harness</small></button><button data-back>Back</button></nav>`;
  if (route === 'checks') screen.innerHTML = `<h1>Inspection</h1><ol><li>Verify drawing revision.</li><li>Check wire IDs and cavities.</li><li>Inspect crimps and strain relief.</li><li>Test continuity and isolation.</li></ol><p class="muted">Follow your approved acceptance criteria.</p><button data-back>Back</button>`;
  if (route === 'assembly') {
@@ -71,7 +127,7 @@ function render(focusID) {
 }
 function renderReader(id) {
  imageReady = false;
- screen.innerHTML = `<div id="paper" tabindex="0" role="button" aria-label="Document page. Select to show controls."><img id="page-image" alt="Harness test datasheet page ${page + 1}" draggable="false"><div id="page-status" role="status">Loading page…</div></div><section id="reader-tools" aria-label="Document controls" hidden><h1>Harness test datasheet · ${page + 1}/${pageCount}</h1><p class="tag" id="view-label">EXAMPLE ONLY · REV A · FIT PAGE</p><div class="controls" aria-label="Page controls"><button id="prev-page" ${page === 0 ? 'disabled' : ''}>← Page</button><button id="next-page" ${page === pageCount-1 ? 'disabled' : ''}>Page →</button><button id="zoom" disabled>Zoom 2×</button><button id="fit" disabled>Fit page</button><button id="move" disabled>Move</button><button id="documents">Documents</button></div><button id="resume" class="compact">Read full screen</button></section>`;
+ screen.innerHTML = `<div id="paper" tabindex="0" role="button" aria-label="Document page. Select to show controls."><img id="page-image" alt="${escapeText(selectedDocument.title)} page ${page + 1}" draggable="false"><div id="page-status" role="status">Loading page…</div></div><section id="reader-tools" aria-label="Document controls" hidden><h1>${escapeText(selectedDocument.title)} · ${page + 1}/${pageCount}</h1><p class="tag" id="view-label">${escapeText(selectedDocument.revision)} · FIT PAGE</p><div class="controls" aria-label="Page controls"><button id="prev-page" ${page === 0 ? 'disabled' : ''}>← Page</button><button id="next-page" ${page === pageCount-1 ? 'disabled' : ''}>Page →</button><button id="zoom" disabled>Zoom 2×</button><button id="fit" disabled>Fit page</button><button id="move" disabled>Move</button><button id="documents">Documents</button></div><button id="resume" class="compact">Read full screen</button></section>`;
  const image = document.getElementById('page-image');
  const status = document.getElementById('page-status');
  image.onload = () => {
@@ -88,7 +144,7 @@ function renderReader(id) {
   document.getElementById('zoom').disabled = false;
   document.getElementById('zoom').onclick = () => render('zoom');
  };
- image.src = `assets/demo/page-${page + 1}.png`;
+ image.src = selectedDocument.pages[page];
  document.getElementById('prev-page').onclick = () => changePage(-1);
  document.getElementById('next-page').onclick = () => changePage(1);
  document.getElementById('zoom').onclick = () => { if (moving) setMoving(false); zoom = zoom === 1 ? 2 : zoom === 2 ? 3 : 1; panX = panY = 0; updateImage(); showTools(false); };
@@ -131,7 +187,7 @@ function updateImage() {
  panX = Math.max(-maxX, Math.min(maxX, panX));
  panY = Math.max(-maxY, Math.min(maxY, panY));
  Object.assign(image.style, {width:`${width}px`,height:`${height}px`,left:`${(paper.clientWidth-width)/2+panX}px`,top:`${(paper.clientHeight-height)/2+panY}px`});
- document.getElementById('view-label').textContent = `EXAMPLE ONLY · REV A · ${zoom === 1 ? 'FIT PAGE' : `${zoom}× ZOOM`}`;
+ document.getElementById('view-label').textContent = `${selectedDocument.revision ? selectedDocument.revision + ' · ' : ''}${zoom === 1 ? 'FIT PAGE' : `${zoom}× ZOOM`}`;
  document.getElementById('zoom').textContent = zoom === 1 ? 'Zoom 2×' : zoom === 2 ? 'Zoom 3×' : 'Zoom 1×';
  document.getElementById('move').disabled = zoom === 1;
  document.getElementById('fit').disabled = zoom === 1;
