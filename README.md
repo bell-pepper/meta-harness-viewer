@@ -38,3 +38,7 @@ The manifest uses relative paths so the project Pages URL works. It supplies sta
 ## Scope
 
 All pinouts and assembly instructions are illustrative. Replace them with approved engineering data before field use. This is a browser app with keyboard input mapping, not a native Meta integration. Physical-device compatibility and navigation input mapping must be verified on the target glasses; this repository does not use a Meta SDK.
+
+## Native Meta Ray-Ban Display companion
+
+A native iPhone prototype is now in [ios/](ios/README.md). It imports PDFs into a saved phone library and uses Meta's Display SDK for document selection and page images on the glasses. Open `ios/DisplayAccess.xcodeproj` on a Mac; follow the native setup and device acceptance instructions before using it. Native compilation and glasses validation are pending. Google Drive import uses the iOS Files provider, not live folder synchronization.
