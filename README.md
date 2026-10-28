@@ -17,9 +17,9 @@ Look for Harness HUD in the glasses app grid. This is a web-app registration pat
 
 1. Launch the app from its glasses icon. Verify arrows/selection work on the main menu.
 2. Choose **Documents → Harness test datasheet**. The example opens inside the app; no URL entry or external Google viewer is involved.
-3. Try both pages. Page controls disable at the beginning/end.
-4. Select **Zoom 2×**, then **Zoom 3×**. Choose **Move** and use arrows to inspect the labeled corners. **Enter** or **Back** exits Move mode. On a phone, drag the page in Move mode and tap **Done**.
-5. Use **Fit page**, then **Documents** to return to the library. Try system Back and confirm the expected screen/focus returns.
+3. The document opens full screen with all app borders, headers, and controls hidden. Press **Enter / Select** (or tap the page) to show controls. Try both pages; page controls disable at the beginning/end.
+4. Select **Zoom 2×** or **Zoom 3×**. Controls hide automatically; arrows or touch dragging move the enlarged page, stopping at its edges. **Enter / Select** shows controls again. **Read full screen** hides them.
+5. **Fit page** returns to the full-page view and hides controls. While reading at fit size, Left/Right changes pages. Back from reading returns to the library; Back with controls open dismisses them first. The **Documents** action returns directly to the library.
 6. Report any installation errors, clipped controls, unreadable labels, or unsupported input. Check phone locking and connection interruption separately; offline or phone-free operation is not promised.
 
 ## Viewer scope
@@ -33,9 +33,9 @@ All pinouts and assembly instructions are examples. Use approved engineering dat
 ## Controls
 
 - Arrow keys move focus. In the viewer's two-row toolbar, Up/Down move between rows and Left/Right move between actions, skipping disabled controls.
-- Enter selects the focused action.
+- Enter selects the focused action in menus. While reading, Enter shows document controls.
 - Escape, Backspace, BrowserBack, or GoBack returns a screen. At home, Back is not intercepted; the host decides what it does.
-- In Move mode, arrows move the page; Enter or Back exits that mode. Movement stops at page edges. Touch dragging also works in Move mode.
+- While reading at fit size, Left/Right changes pages. While zoomed, arrows or dragging move the page. Enter opens controls without changing the viewing position. Back from reading returns to Documents.
 - Tab, touch, and mouse work in a browser.
 
 The application targets a 600×600 display and adapts to smaller viewports. Keyboard tests do not substitute for testing real glasses input.

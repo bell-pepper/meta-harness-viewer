@@ -10,6 +10,7 @@ let zoom = 1;
 let panX = 0;
 let panY = 0;
 let moving = false;
+let toolsOpen = false;
 let imageReady = false;
 let renderID = 0;
 const pageCount = 2;
@@ -31,7 +32,8 @@ function go(next) {
  render();
 }
 function back() {
- if (moving) { setMoving(false); return; }
+ if (moving) { moving = false; toolsOpen = false; }
+ if (route === 'reader' && toolsOpen) { showTools(false); return; }
  const prior = stack.pop();
  if (!prior) return;
  route = prior.route; step = prior.step;
@@ -45,6 +47,8 @@ function bind() {
 function render(focusID) {
  const id = ++renderID;
  moving = false;
+ toolsOpen = false;
+ document.getElementById('hud').classList.toggle('reading', route === 'reader');
  screen.className = route === 'reader' ? 'reader' : route === 'assembly' ? 'assembly' : '';
  position.textContent = route === 'home' ? 'HOME' : route === 'assembly' ? `${step + 1} / 3` : route === 'reader' ? `PAGE ${page + 1} / ${pageCount}` : route.toUpperCase();
  hint.textContent = 'Arrows Navigate · Enter Select · Back Return';
@@ -62,11 +66,12 @@ function render(focusID) {
  }
  if (route === 'reader') renderReader(id);
  bind();
- focusButton(focusID);
+ if (route === 'reader') document.getElementById('paper').focus({preventScroll:true});
+ else focusButton(focusID);
 }
 function renderReader(id) {
  imageReady = false;
- screen.innerHTML = `<h1>Harness test datasheet</h1><p class="tag" id="view-label">EXAMPLE ONLY · REV A · FIT PAGE</p><div id="paper" aria-label="PDF page image"><img id="page-image" alt="Harness test datasheet page ${page + 1}" draggable="false"><div id="page-status" role="status">Loading page…</div></div><div class="controls" aria-label="Page controls"><button id="prev-page" ${page === 0 ? 'disabled' : ''}>← Page</button><button id="next-page" ${page === pageCount-1 ? 'disabled' : ''}>Page →</button><button id="zoom" disabled>Zoom 2×</button><button id="fit" disabled>Fit page</button><button id="move" disabled>Move</button><button id="documents" data-back>Documents</button></div>`;
+ screen.innerHTML = `<div id="paper" tabindex="0" role="button" aria-label="Document page. Select to show controls."><img id="page-image" alt="Harness test datasheet page ${page + 1}" draggable="false"><div id="page-status" role="status">Loading page…</div></div><section id="reader-tools" aria-label="Document controls" hidden><h1>Harness test datasheet · ${page + 1}/${pageCount}</h1><p class="tag" id="view-label">EXAMPLE ONLY · REV A · FIT PAGE</p><div class="controls" aria-label="Page controls"><button id="prev-page" ${page === 0 ? 'disabled' : ''}>← Page</button><button id="next-page" ${page === pageCount-1 ? 'disabled' : ''}>Page →</button><button id="zoom" disabled>Zoom 2×</button><button id="fit" disabled>Fit page</button><button id="move" disabled>Move</button><button id="documents">Documents</button></div><button id="resume" class="compact">Read full screen</button></section>`;
  const image = document.getElementById('page-image');
  const status = document.getElementById('page-status');
  image.onload = () => {
@@ -77,6 +82,7 @@ function renderReader(id) {
  };
  image.onerror = () => {
   if (route !== 'reader' || renderID !== id) return;
+  showTools(true);
   status.textContent = 'Page could not load. Check connection, then select Retry.';
   document.getElementById('zoom').textContent = 'Retry';
   document.getElementById('zoom').disabled = false;
@@ -85,18 +91,24 @@ function renderReader(id) {
  image.src = `assets/demo/page-${page + 1}.png`;
  document.getElementById('prev-page').onclick = () => changePage(-1);
  document.getElementById('next-page').onclick = () => changePage(1);
- document.getElementById('zoom').onclick = () => { if (moving) setMoving(false); zoom = zoom === 1 ? 2 : zoom === 2 ? 3 : 1; panX = panY = 0; updateImage(); };
- document.getElementById('fit').onclick = () => { resetView(); updateImage(); focusButton('zoom'); };
- document.getElementById('move').onclick = () => setMoving(!moving);
+ document.getElementById('zoom').onclick = () => { if (moving) setMoving(false); zoom = zoom === 1 ? 2 : zoom === 2 ? 3 : 1; panX = panY = 0; updateImage(); showTools(false); };
+ document.getElementById('fit').onclick = () => { resetView(); updateImage(); showTools(false); };
+ document.getElementById('move').onclick = () => showTools(false);
+ document.getElementById('resume').onclick = () => showTools(false);
+ document.getElementById('documents').onclick = () => { toolsOpen = false; moving = false; back(); };
  const paper = document.getElementById('paper');
  let pointer = null;
+ let dragged = false;
+ paper.onclick = () => { if (!dragged) showTools(!toolsOpen); };
  paper.onpointerdown = e => {
+  dragged = false;
   if (!moving) return;
   pointer = {x:e.clientX, y:e.clientY};
   paper.setPointerCapture(e.pointerId);
  };
  paper.onpointermove = e => {
   if (!moving || !pointer) return;
+  if (Math.abs(e.clientX-pointer.x) + Math.abs(e.clientY-pointer.y) > 2) dragged = true;
   panX += e.clientX - pointer.x; panY += e.clientY - pointer.y;
   pointer = {x:e.clientX, y:e.clientY}; updateImage();
  };
@@ -123,22 +135,28 @@ function updateImage() {
  document.getElementById('zoom').textContent = zoom === 1 ? 'Zoom 2×' : zoom === 2 ? 'Zoom 3×' : 'Zoom 1×';
  document.getElementById('move').disabled = zoom === 1;
  document.getElementById('fit').disabled = zoom === 1;
- if (document.activeElement?.disabled) focusButton('zoom');
+ if (toolsOpen && document.activeElement?.disabled) focusButton('zoom');
+}
+function showTools(value) {
+ toolsOpen = value;
+ moving = !value && zoom > 1 && imageReady;
+ document.getElementById('reader-tools').hidden = !value;
+ if (value) focusButton(imageReady ? 'zoom' : 'documents');
+ else document.getElementById('paper').focus({preventScroll:true});
 }
 function setMoving(value) {
- if (value && (!imageReady || zoom === 1)) return;
- moving = value;
- document.getElementById('paper')?.classList.toggle('panning', value);
- const control = document.getElementById('move');
- if (control) control.textContent = value ? 'Done' : 'Move';
- hint.textContent = value ? 'Arrows / Drag Move · Enter / Back Done' : 'Arrows Navigate · Enter Select · Back Return';
- if (!value) focusButton('move');
+ if (!value) showTools(true);
+ else showTools(false);
 }
 document.addEventListener('keydown', e => {
  if (e.altKey || e.ctrlKey || e.metaKey) return;
  if (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'BrowserBack' || e.key === 'GoBack') { if (moving || stack.length) { e.preventDefault(); back(); } return; }
+ if (route === 'reader' && !toolsOpen && !moving) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showTools(true); return; }
+  if (e.key.startsWith('Arrow')) { e.preventDefault(); if (e.key === 'ArrowRight') changePage(1); if (e.key === 'ArrowLeft') changePage(-1); return; }
+ }
  if (moving) {
-  if (e.key === 'Enter') { e.preventDefault(); setMoving(false); return; }
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMoving(false); return; }
   if (e.key.startsWith('Arrow')) {
    e.preventDefault();
    const distance = 64;
@@ -157,7 +175,7 @@ document.addEventListener('keydown', e => {
  const current = items.indexOf(document.activeElement);
  let next;
  if (route === 'reader') {
-  const all = [...screen.querySelectorAll('.controls button')];
+  const all = [...screen.querySelectorAll('.controls button, #resume')];
   const at = all.indexOf(document.activeElement);
   const delta = e.key === 'ArrowDown' ? 3 : e.key === 'ArrowUp' ? -3 : e.key === 'ArrowRight' ? 1 : -1;
   let target = (at + delta + all.length) % all.length;

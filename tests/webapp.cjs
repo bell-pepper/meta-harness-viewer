@@ -6,6 +6,10 @@ const base = process.env.HARNESS_TEST_URL || 'http://127.0.0.1:8090/meta-harness
  const browser = await chromium.launch({executablePath:process.env.CHROMIUM_PATH || (process.platform === 'linux' ? '/usr/bin/chromium' : undefined), headless:true, args:['--no-sandbox']});
  try {
   const page = await browser.newPage({viewport:{width:600,height:600}});
+  async function clickTool(selector) {
+   if (await page.locator('#reader-tools').getAttribute('hidden') !== null) await page.keyboard.press('Enter');
+   await page.locator(selector).click();
+  }
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(base);
@@ -21,13 +25,17 @@ const base = process.env.HARNESS_TEST_URL || 'http://127.0.0.1:8090/meta-harness
   await page.waitForFunction(() => document.querySelector('#page-image')?.naturalWidth > 0 && document.querySelector('#page-status')?.hidden);
   assert.equal(await page.locator('#position').innerText(), 'PAGE 1 / 2');
   assert(await page.locator('#prev-page').isDisabled());
+  assert.deepEqual(await page.locator('#paper').boundingBox(), {x:0,y:0,width:600,height:600});
+  assert(await page.locator('header').isHidden());
+  assert(await page.locator('footer').isHidden());
+  assert(await page.locator('#reader-tools').isHidden());
   const fitSize = await page.locator('#page-image').boundingBox();
-  await page.locator('#zoom').click();
+  await clickTool('#zoom');
   assert((await page.locator('#page-image').boundingBox()).height > fitSize.height * 1.9);
-  await page.locator('#zoom').click();
+  await clickTool('#zoom');
   await page.screenshot({path:'/tmp/harness-reader-zoom.png'});
-  await page.locator('#move').click();
-  assert(await page.locator('#paper').evaluate(el => el.classList.contains('panning')));
+  await clickTool('#move');
+  assert(await page.locator('#reader-tools').isHidden());
   const before = await page.locator('#page-image').boundingBox();
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowRight');
@@ -39,10 +47,15 @@ const base = process.env.HARNESS_TEST_URL || 'http://127.0.0.1:8090/meta-harness
   assert.equal((await page.locator('#page-image').boundingBox()).y, edge.y, 'pan clamps at the page edge');
   await page.keyboard.press('Enter');
   assert.equal(await page.locator('#position').innerText(), 'PAGE 1 / 2');
-  assert(!await page.locator('#paper').evaluate(el => el.classList.contains('panning')));
-  await page.locator('#fit').click();
+  assert(await page.locator('#reader-tools').isVisible());
+  await clickTool('#fit');
   assert(await page.locator('#move').isDisabled());
-  await page.locator('#next-page').click();
+  await page.keyboard.press('Enter');
+  assert(await page.locator('#reader-tools').isVisible());
+  await page.keyboard.press('Escape');
+  assert(await page.locator('#reader-tools').isHidden());
+  assert.equal(await page.locator('#position').innerText(), 'PAGE 1 / 2');
+  await page.keyboard.press('ArrowRight');
   await page.waitForFunction(() => document.querySelector('#page-image')?.naturalWidth > 0 && document.querySelector('#page-status')?.hidden);
   assert.equal(await page.locator('#position').innerText(), 'PAGE 2 / 2');
   assert(await page.locator('#next-page').isDisabled());
@@ -82,7 +95,7 @@ const base = process.env.HARNESS_TEST_URL || 'http://127.0.0.1:8090/meta-harness
   await page.locator('#home-documents').click();await page.locator('#demo-document').click();
   await page.waitForFunction(() => document.querySelector('#zoom')?.textContent === 'Retry');
   assert(!(await page.locator('#zoom').isDisabled()));
-  await page.locator('#documents').click();
+  await clickTool('#documents');
   assert.equal(await page.locator('h1').innerText(), 'Documents');
   assert.deepEqual(errors, []);
   console.log('PASS: metadata, project paths, menu and reference navigation, PDF pages, zoom, clamped pan, focus restoration, small-screen layout, installation link, and image failure recovery.');
