@@ -1,0 +1,27 @@
+# Optional deployment template. Review hosting plan and OAuth settings before deploying.
+services:
+  - type: web
+    name: harness-drive
+    runtime: docker
+    plan: standard
+    numInstances: 1
+    dockerfilePath: ./service/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    disk:
+      name: harness-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: HARNESS_DATABASE
+        value: /data/harness.sqlite3
+      - key: HARNESS_FRONTEND_ORIGIN
+        value: https://bell-pepper.github.io
+      - key: HARNESS_PUBLIC_URL
+        sync: false
+      - key: HARNESS_ENCRYPTION_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

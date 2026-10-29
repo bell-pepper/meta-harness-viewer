@@ -24,3 +24,5 @@ table{width:100%;border-collapse:collapse;font-size:23px}th,td{text-align:left;b
 #reader-tools{position:absolute;bottom:0;left:0;right:0;z-index:2;background:#000;padding:16px;border-top:2px solid #fff;display:grid;gap:12px}
 #reader-tools[hidden]{display:none}
 #reader-tools #resume{text-align:center}
+
+.pair-code{font-size:40px;font-weight:700;letter-spacing:.15em;text-align:center}.pair-url{font-size:20px;overflow-wrap:anywhere}

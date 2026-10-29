@@ -1,6 +1,6 @@
 # Harness HUD
 
-An icon-launchable web-app prototype for Meta Ray-Ban Display. Includes Pinouts, Quick Reference, example assembly steps, and an internal two-page datasheet viewer. Device installation and readability still need validation on the glasses.
+An icon-launchable web-app prototype for Meta Ray-Ban Display. Includes Pinouts, Quick Reference, example assembly steps, and an internal two-page datasheet viewer. The user has confirmed launcher installation and full-screen demo reading on the glasses. Private Drive integration is implemented and locally tested; live Google login and deployment/device validation remain outstanding.
 
 - **App:** https://bell-pepper.github.io/meta-harness-viewer/
 - **Phone setup / installation QR:** https://bell-pepper.github.io/meta-harness-viewer/install.html
@@ -26,7 +26,7 @@ Look for Harness HUD in the glasses app grid. This is a web-app registration pat
 
 The bundled [PDF](assets/demo/harness-test.pdf) is pre-rendered to two high-contrast PNG page images. This keeps the glasses runtime small and avoids loading a PDF engine for the initial hardware test. Images preserve the source page's layout; raster colors are inverted for white content on a black additive-display background. Fit page gives an overview; zoom is needed to read small text.
 
-This version does **not** load arbitrary PDFs, connect Google Drive, sync folders, or store private files. All bundled data is public and illustrative. A private document library and authorization design come after the launcher/display test. Do not commit private engineering data to this public site.
+The public demo remains available. A separate private Drive service now supports per-user Google authorization, folder selection, glasses pairing, and on-demand PDF page rendering. It must be deployed and configured before the public app can connect Google accounts. Google Docs export, recursive subfolders, and offline reading are not implemented. Do not commit private engineering data to this public site.
 
 All pinouts and assembly instructions are examples. Use approved engineering data and acceptance criteria for actual harness work.
 
@@ -34,9 +34,22 @@ All pinouts and assembly instructions are examples. Use approved engineering dat
 
 The viewer now reads `assets/documents.json` instead of assuming one two-page document. Entries have an ID, title, optional revision, and a nonempty list of prepared page-image URLs. Paths resolve relative to that catalog. Different documents may have different page counts. Documents offers Refresh and handles empty libraries and connection failures.
 
-This catalog is public on GitHub Pages. It is not a Google Drive connection, and it must not contain credentials or private document links. Live folder access remains pending the source-folder details and its privacy requirements. Do not change Google sharing settings merely to use this foundation.
+This catalog is public on GitHub Pages. It is not a Google Drive connection, and it must not contain credentials or private document links. When paired to the configured private service, the viewer uses an authenticated per-user Drive library instead of this public catalog. Keep Drive sharing settings private; no single shared folder is hard-coded.
 
 The additional browser test `tests/library.cjs` checks multiple documents, variable page counts, title escaping, empty libraries, failed refreshes, and invalid page addresses. Run it using the same Playwright setup as `tests/webapp.cjs`.
+
+## Per-user private Google Drive
+
+Implementation: [private service setup and deployment](service/README.md).
+
+- On the phone: sign in with Google, select a folder, and enter the code from the glasses.
+- On the glasses: Documents → Connect Google Drive → Open my datasheets.
+- PDFs are rendered by the service and displayed using the existing full-screen viewer. No Google tokens, PDF copies, or private page URLs are published in GitHub Pages.
+- Revoke paired devices or disconnect the Google account from the phone setup page.
+
+**Not activated on the live site yet.** `drive-config.js` intentionally contains an empty service URL. Activation needs an HTTPS backend with persistent storage and Google OAuth credentials from the app owner's project. The optional [Render deployment template](render.yaml) and [Dockerfile](service/Dockerfile) are supplied for review. The container was built and tested locally, including persistence across container replacement. No external backend has been deployed.
+
+Local validation includes twelve backend tests and a complete browser flow with **Google simulated**: real OAuth state/PKCE handling in our app, account/folder selection, pairing, actual PDF parsing/rendering, full-screen display, and revocation. Google consent and a real private Drive folder still need live verification. See the service README for exact limitations, scope requirements, and test commands.
 
 ## Controls
 
@@ -101,4 +114,4 @@ The QR code encodes the public app name and launch URL only. Change the URL cons
 - [Meta Web Apps and deployment guide](https://github.com/facebook/meta-wearables-webapp#4-deploy-to-glasses)
 - [Meta UI Toolkit, simulator, and samples](https://github.com/facebook/meta-ray-ban-display-ui-toolkit-web)
 
-The current small static UI uses explicit focus handling. Toolkit adoption and arbitrary-document rendering are later work, subject to the initial device test.
+The current small static UI uses explicit focus handling. Toolkit adoption remains optional future work. Arbitrary PDF rendering is implemented in the private backend, subject to deployment and live device verification.

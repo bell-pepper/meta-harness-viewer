@@ -19,6 +19,42 @@ let pageCount = 0;
 let libraryLoading = false;
 let libraryError = '';
 let libraryRequest = null;
+let libraryGeneration = 0;
+let opening = false;
+let navigationGeneration = 0;
+let pageBlob = null;
+let pairing = null;
+let pairingError = '';
+let pairTimer = null;
+let pairBusy = false;
+let pairGeneration = 0;
+const drive = window.HarnessDrive;
+async function beginPairing() {
+ if(pairBusy)return;
+ clearTimeout(pairTimer);
+ const attempt=++pairGeneration;
+ if (!drive.configured()) { pairingError = 'Private Drive service is not deployed yet. Please use the setup instructions on your phone.'; render(); return; }
+ pairBusy=true;pairingError = ''; pairing = null; render();
+ try {
+  if (drive.paired()) { pairing = {connected:true}; pairBusy=false;if(route === 'drive') render(); return; }
+  const result = await drive.startPair();
+  if (route !== 'drive' || attempt !== pairGeneration) return;
+  pairBusy=false;pairing = result; render(); pollPairing();
+ } catch(e) { pairingError=e.message;pairBusy=false;if(route==='drive')render(); }
+ finally {pairBusy=false;}
+}
+async function pollPairing() {
+ const attempt=pairGeneration;
+ clearTimeout(pairTimer);
+ if(route!=='drive'||!pairing||pairing.connected)return;
+ try {
+  const status=await drive.status();
+  if(route!=='drive'||attempt!==pairGeneration)return;
+  if(status.paired){pairing={connected:true};documents=[];libraryGeneration++;render();return;}
+  pairTimer=setTimeout(pollPairing,4000);
+ }catch(e){pairingError=e.message;if(route==='drive')render();}
+}
+
 const catalogURL = new URL('assets/documents.json', document.baseURI);
 function escapeText(value) {
  return String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -41,28 +77,46 @@ function parseCatalog(data) {
 async function loadLibrary() {
  if (libraryRequest) return libraryRequest;
  libraryLoading = true; libraryError = '';
+ const generation = libraryGeneration;
  if (route === 'documents') render();
  libraryRequest = (async () => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
+   if(drive.paired()) {
+    const loaded=await drive.documents();
+    if(generation === libraryGeneration) documents=loaded;
+    return;
+   }
    const response = await fetch(catalogURL, {cache:'no-store', signal:controller.signal});
    if (!response.ok) throw new Error('Could not load the document library.');
    const loaded = parseCatalog(await response.json());
-   documents = loaded;
-  } catch { libraryError = 'Could not load documents. Check your connection and select Retry.'; }
+   if(generation === libraryGeneration) documents = loaded;
+  } catch(e) { libraryError = drive.paired() ? e.message : 'Could not load documents. Check your connection or reconnect Drive.'; }
   finally {
    clearTimeout(timeout); libraryLoading = false; libraryRequest = null;
-   if (route === 'documents') render();
+   if (route === 'documents') {if(generation!==libraryGeneration)loadLibrary();else render();}
   }
  })();
  return libraryRequest;
 }
-function openDocument(index) {
+async function openDocument(index) {
  const selected = documents[index];
- if (!selected) return;
- selectedDocument = selected; pageCount = selected.pages.length;
- go('reader');
+ const originalFocus=document.activeElement?.id;
+ const navigation=navigationGeneration;
+ if (!selected || opening) return;
+ opening=true;
+ try {
+  let resolved=selected;
+  if(selected.private) {
+   libraryLoading=true;render();
+   resolved=await drive.open(selected);
+  }
+  if(route!=='documents'||navigation!==navigationGeneration)return;
+  selectedDocument = resolved; pageCount = resolved.pages.length;
+  libraryLoading=false;go('reader');stack[stack.length-1].focus=originalFocus;
+ } catch(e) {libraryError=e.message;libraryLoading=false;if(route==='documents')render();}
+ finally {opening=false;libraryLoading=false;if(route==='documents')render();}
 }
 const steps = [
  ['Prepare the wire', 'Cut one sample wire to the length specified by your approved drawing.', 'Confirm wire ID and inspect the insulation.'],
@@ -75,18 +129,21 @@ function focusButton(id) {
  target?.scrollIntoView({block:'nearest'});
 }
 function go(next) {
+ navigationGeneration++;
  stack.push({route, step, focus:document.activeElement?.id});
  route = next;
  if (next === 'assembly') step = 0;
  if (next === 'reader') { page = 0; resetView(); }
  render();
  if (next === 'documents' && !documents.length && !libraryLoading) loadLibrary();
+ if (next === 'drive') beginPairing();
 }
 function back() {
  if (moving) { moving = false; toolsOpen = false; }
  if (route === 'reader' && toolsOpen) { showTools(false); return; }
  const prior = stack.pop();
  if (!prior) return;
+ navigationGeneration++;
  route = prior.route; step = prior.step;
  render(prior.focus);
 }
@@ -97,6 +154,8 @@ function bind() {
 }
 function render(focusID) {
  const id = ++renderID;
+ if(pageBlob) {URL.revokeObjectURL(pageBlob);pageBlob=null;}
+ if(route!=='drive')clearTimeout(pairTimer);
  moving = false;
  toolsOpen = false;
  document.getElementById('hud').classList.toggle('reading', route === 'reader');
@@ -106,10 +165,19 @@ function render(focusID) {
  if (route === 'home') screen.innerHTML = `<h1>Field reference</h1><p class="muted">Choose a workspace</p><nav aria-label="Main menu"><button id="home-pinouts" data-go="pinouts">Pinouts<small>Connector cavities & signals</small></button><button id="home-documents" data-go="documents">Documents<small>Saved datasheets · no typing</small></button><button id="home-quick" data-go="quick">Quick Reference<small>Assembly steps & checks</small></button></nav>`;
  if (route === 'pinouts') screen.innerHTML = `<h1>Connector J1</h1><p class="tag">EXAMPLE ONLY · MATING FACE</p><div class="card"><h2>4-position connector</h2><table><thead><tr><th scope="col">Pin</th><th scope="col">Signal</th><th scope="col">Wire</th></tr></thead><tbody><tr><td>1</td><td>+12 V</td><td>Red</td></tr><tr><td>2</td><td>Ground</td><td>Black</td></tr><tr><td>3</td><td>CAN H</td><td>White</td></tr><tr><td>4</td><td>CAN L</td><td>Blue</td></tr></tbody></table></div><p class="muted">Use the approved drawing for actual wiring and orientation.</p><button data-back>Back</button>`;
  if (route === 'documents') {
-  screen.innerHTML = `<h1>Documents</h1>${libraryLoading ? '<p role="status">Loading documents…</p>' : libraryError ? `<p role="alert">${escapeText(libraryError)}</p>` : '<p class="muted">Choose a datasheet</p>'}<nav>${libraryError || libraryLoading ? '' : documents.map((doc, index) => `<button id="${doc.id === 'demo' ? 'demo-document' : `document-${index}`}" data-document="${index}">${escapeText(doc.title)}<small>${doc.pages.length} ${doc.pages.length === 1 ? 'page' : 'pages'}${doc.revision ? ` · ${escapeText(doc.revision)}` : ''}</small></button>`).join('')}${!libraryLoading ? `<button id="refresh-library">${libraryError ? 'Retry' : 'Refresh documents'}</button>` : ''}<button data-back>Back</button></nav>${!documents.length && !libraryLoading && !libraryError ? '<p class="muted">No documents are available.</p>' : ''}`;
+  screen.innerHTML = `<h1>Documents</h1>${libraryLoading ? '<p role="status">Loading documents…</p>' : libraryError ? `<p role="alert">${escapeText(libraryError)}</p>` : '<p class="muted">Choose a datasheet</p>'}<nav>${libraryError || libraryLoading ? '' : documents.map((doc, index) => `<button id="${doc.id === 'demo' ? 'demo-document' : `document-${index}`}" data-document="${index}">${escapeText(doc.title)}<small>${doc.private ? 'Private PDF' : doc.pages.length + (doc.pages.length === 1 ? ' page' : ' pages')}${doc.revision ? ` · ${escapeText(doc.revision)}` : ''}</small></button>`).join('')}${!libraryLoading ? `<button id="refresh-library">${libraryError ? 'Retry' : 'Refresh documents'}</button>` : ''}<button id="drive-connect" data-go="drive">${drive.paired() ? 'Manage Google Drive' : 'Connect Google Drive'}</button><button data-back>Back</button></nav>${!documents.length && !libraryLoading && !libraryError ? '<p class="muted">No documents are available.</p>' : ''}`;
   screen.querySelectorAll('[data-document]').forEach(el => el.onclick = () => openDocument(Number(el.dataset.document)));
   const refresh = document.getElementById('refresh-library');
   if (refresh) refresh.onclick = loadLibrary;
+ }
+ if(route === 'drive') {
+  screen.innerHTML=`<h1>Google Drive</h1>${pairingError ? `<p role="alert">${escapeText(pairingError)}</p>` : pairing?.connected ? '<p>Your private library is connected.</p>' : pairing ? `<p>On your phone, open:</p><p class="pair-url">${escapeText(pairing.setup_url)}</p><p>Sign in, select a folder, then enter:</p><p class="pair-code">${escapeText(pairing.code)}</p><p class="muted">Code expires in 10 minutes. No typing on glasses.</p>` : '<p role="status">Preparing connection…</p>'}<nav>${pairing?.connected ? '<button id="drive-library">Open my datasheets</button><button id="drive-forget">Disconnect these glasses</button>' : `<button id="drive-retry" ${pairBusy?'disabled':''}>New pairing code</button>`}<button data-back>Back</button></nav>`;
+  const retry=document.getElementById('drive-retry');if(retry)retry.onclick=beginPairing;
+  const library=document.getElementById('drive-library');if(library)library.onclick=()=>{back();loadLibrary();};
+  const forget=document.getElementById('drive-forget');if(forget)forget.onclick=async()=>{
+   try {await drive.disconnect();}catch{}
+   documents=[];libraryGeneration++;pairing=null;pairingError='';back();loadLibrary();
+  };
  }
  if (route === 'quick') screen.innerHTML = `<h1>Quick Reference</h1><nav><button id="assembly" data-go="assembly">Harness assembly<small>Three example steps</small></button><button id="checks" data-go="checks">Inspection checklist<small>Before releasing a harness</small></button><button data-back>Back</button></nav>`;
  if (route === 'checks') screen.innerHTML = `<h1>Inspection</h1><ol><li>Verify drawing revision.</li><li>Check wire IDs and cavities.</li><li>Inspect crimps and strain relief.</li><li>Test continuity and isolation.</li></ol><p class="muted">Follow your approved acceptance criteria.</p><button data-back>Back</button>`;
@@ -144,7 +212,15 @@ function renderReader(id) {
   document.getElementById('zoom').disabled = false;
   document.getElementById('zoom').onclick = () => render('zoom');
  };
- image.src = selectedDocument.pages[page];
+ if(selectedDocument.private) {
+  drive.image(selectedDocument.pages[page]).then(url=>{
+   if(route!=='reader'||renderID!==id){URL.revokeObjectURL(url);return;}
+   pageBlob=url;image.src=url;
+  }).catch(e=>{
+   if(route!=='reader'||renderID!==id)return;
+   image.onerror();status.textContent=e.message;
+  });
+ } else image.src = selectedDocument.pages[page];
  document.getElementById('prev-page').onclick = () => changePage(-1);
  document.getElementById('next-page').onclick = () => changePage(1);
  document.getElementById('zoom').onclick = () => { if (moving) setMoving(false); zoom = zoom === 1 ? 2 : zoom === 2 ? 3 : 1; panX = panY = 0; updateImage(); showTools(false); };

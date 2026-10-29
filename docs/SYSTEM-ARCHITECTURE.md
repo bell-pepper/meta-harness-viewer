@@ -33,17 +33,34 @@ An installed web-app entry offers the documented route to an icon/tile launch. A
 
 A custom iOS app is optional unless a specific authorization, storage, or background requirement calls for one. Keep the native prototype as an alternative; do not require Xcode merely to try a glasses web app.
 
-## Current web milestone
+## Current web and private Drive implementation
 
-The app now includes Meta's input-routing tag, launcher identity metadata, white-on-transparent PNG icons, a phone installation page/QR, and an internal two-page viewer using prepared PDF images. The viewer has page boundaries, zoom, bounded movement, and no URL entry. Browser regression tests pass; Meta's official manifest validator accepts the metadata. Installation on the user's glasses and actual PDF readability remain unverified. Private Drive access and arbitrary-PDF loading are not implemented.
+The user has confirmed launching the installed Web App, opening the demo datasheet, and reading in full-screen mode without app borders/toolbars. Enter reveals controls, zoom returns to borderless reading, and the original demo remains available.
+
+Private Drive is now implemented in `service/` and the frontend's `drive-client.js`, but is **not deployed or connected to a real Google account yet**. The live frontend leaves its service origin unset until hosting and OAuth configuration are ready.
+
+```mermaid
+flowchart LR
+  Phone[Phone setup page] -->|Google OAuth and folder choice| Service[Private Drive service]
+  Google[User Google Drive] -->|Per-user read-only API access| Service
+  Service --> DB[Persistent SQLite: encrypted Google tokens, selected folders, hashed device grants]
+  Glasses[Icon-launched Web App] -->|Pairing code and device bearer grant| Service
+  Service -->|Authenticated page images| Glasses
+```
+
+The phone setup page is served by the backend, using first-party HttpOnly session cookies, browser-bound OAuth state/PKCE, and CSRF protection. The GitHub Pages glasses app calls a configured HTTPS API origin with a revocable device bearer credential. This avoids relying on third-party cookies or transmitting Google credentials to the glasses. Private page images are fetched into short-lived Blob URLs and revoked when leaving/changing the page.
+
+Each Google account selects its own folder. Paired devices can request only downloadable PDFs directly inside that folder, and metadata permissions are rechecked even when bytes are cached. Google OAuth's read-only Drive scope is broader than this application folder restriction; the setup page explains that distinction. Nested folders are not recursively listed. The app owner must configure Google OAuth consent/testing and resolve Google's restricted-scope verification requirements before wider rollout.
+
+PDFium processes PDFs in bounded child processes. Twelve backend tests pass, as do the existing demo/library browser suites and the complete phone-to-glasses integration browser test using simulated Google responses and a real PDF. The container builds, starts, renders PDFs, and retains SQLite state across container replacement. These checks do not establish real Google consent/permissions or real-device cross-origin/Blob support. See [service deployment instructions](../service/README.md).
 
 ## What remains to build or verify
 
-1. Test adding a known official sample, then our existing HTTPS URL, through Meta's documented Web Apps installation path. Verify an app-grid entry and real navigation. Our existing website has not been installed/tested on the glasses.
+1. Launcher installation and full-screen demo reading are confirmed by the user. Preserve those working behaviors while testing private API loading on the glasses.
 2. MRBD metadata/icon and explicit directional focus are implemented. Test actual glasses focus behavior; the full Display UI toolkit has not been adopted. Ordinary PWA metadata alone is not proof of proper glasses integration.
-3. The paste-a-link form is replaced by a saved demo menu and in-app image viewer. Extend it to real documents after hardware validation; arbitrary PDF and Google Drive access remain unimplemented.
-4. Investigate PDF.js or pre-rendered page tiles under the documented low CPU/bandwidth budgets. Large dense PDFs may require preprocessing. Keep technical labels and revision identifiers legible.
-5. Choose a private Drive access design. A static GitHub Pages app cannot automatically read private Drive files; Google OAuth, CORS, token handling, refresh, and consent rules must be established. A phone-based authorization/setup flow and an authenticated backend may be appropriate. Public links must not be required for private engineering files. Do not promise live Drive folder browsing until this is implemented and tested.
+3. The per-user Drive library and arbitrary PDF service are implemented; deploy the backend and test a real private folder before claiming live access.
+4. Test PDFium page quality, network latency, and large/dense datasheets on physical glasses. Keep technical labels and revision identifiers legible.
+5. Activate the selected server-backed design: configure Google OAuth and backend hosting, then set the public service origin in drive-config.js. Public sharing is not required. Do not promise live access before real-account tests pass.
 6. Verify cookies/storage persistence, network availability, cache limits, suspend/resume, and whether the phone is needed for connectivity. A website being reachable from the phone does not validate these properties.
 
 The existing 600×600 browser prototype remains a starting point. The native iOS project is source-only and still unbuilt/unverified. The following DAT-specific review is preserved as a historical record of that alternative; its statements about missing web-app/launcher evidence are superseded by this correction.
