@@ -38,6 +38,12 @@ This catalog is public on GitHub Pages. It is not a Google Drive connection, and
 
 The additional browser test `tests/library.cjs` checks multiple documents, variable page counts, title escaping, empty libraries, failed refreshes, and invalid page addresses. Run it using the same Playwright setup as `tests/webapp.cjs`.
 
+## Current direction: simpler iPhone Files companion
+
+The selected approach is now the [native Files-based companion](ios/README.md): choose PDFs or folders from Google Drive's Files provider or local phone storage, save location bookmarks rather than PDF copies, and browse folders/documents on the glasses. No custom Google OAuth project or backend is needed for that workflow. Files/Drive can still download and cache a selected PDF. Native compilation and device/provider validation remain pending on the Mac and iPhone; the working web app is preserved.
+
+The server-backed web integration below remains an alternative implementation, not a prerequisite for the new Files-based workflow.
+
 ## Per-user private Google Drive
 
 Implementation: [private service setup and deployment](service/README.md).

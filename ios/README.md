@@ -1,24 +1,42 @@
-# Harness HUD — native iPhone companion prototype
+# Harness HUD — Files-based iPhone companion
 
-This is an optional native companion path to Meta Ray-Ban Display. A separate official on-glasses Web Apps platform has now been identified and is the preferred path to test for the glasses app-grid icon requirement; see [the corrected architecture review](../docs/SYSTEM-ARCHITECTURE.md). An iPhone Home Screen shortcut is separate from Meta Web Apps registration.
+This is the selected simpler path: choose PDFs or folders with Apple's Files picker on the iPhone, then browse folders/documents and read pages on Meta Ray-Ban Display through Meta's native Display SDK. No app-specific Google OAuth project, shared Drive folder, or private backend is required for this workflow. Google Drive must already be installed/signed in and available as a Files provider.
 
-## Current implementation and validation status
+The existing icon-launched web app remains unchanged. This native companion starts from the phone; an icon that launches this native experience on the glasses has not been verified. Installing a web app is a different mechanism.
 
-- Import one or more unlocked PDFs using Apple's document picker, copy them into private app storage, and retain them across launches.
-- Google Drive is available through the picker only if its iOS Files provider is installed, signed in, and enabled. Import downloads a local copy; it does not sync a Drive folder.
-- Send a paginated list of saved document names to the glasses, three names per menu.
-- Render PDFs using PDFKit on a worker task, send page images using MWDATDisplay, and offer Previous, Next, Zoom, Next section, Fit page, and Documents buttons.
-- Zoom cycles through four corners at 2× fit scale. It is not continuous pan/zoom. Very small print may still be unreadable.
-- Show the last rendered image and page controls on the phone. Phone rendering can work even if glasses connection fails; inspect the connection error separately.
-- Retain Meta's original Samples and Settings screens for connection troubleshooting and sample simulator previews.
+## Storage and access behavior
 
-**Not yet built with Xcode or tested on glasses.** The cloud workspace is Linux and cannot compile Apple's frameworks. Device access, image sizing in the real display layout, input behavior, background operation, and PDF legibility remain acceptance checks. No claim of production readiness is made.
+- The app saves only security-scoped location bookmarks, display names, and small location metadata in `Application Support/HarnessLocations.json`.
+- It does not copy selected PDFs into app-managed storage. Selecting a PDF does not parse it; opening it for reading coordinates provider access and lets PDFKit read it.
+- Google Drive/Files may download an entire selected PDF and retain a local cache. We cannot promise zero local storage or force another provider to delete its cache. Local phone PDFs work through the same picker.
+- One 600×600 raster is retained for the current phone preview and sent to the glasses. No PDF bytes are sent to the glasses. Rendering buffers are temporary, and page images are not saved to disk by this app.
+- Disconnect stops the display session and releases our preview. This does not clear Google's or iOS's cache.
+- Swipe a saved location to forget its bookmark. This does not delete or modify the source file or folder.
+- Existing imported copies from the older prototype, if any, are not automatically deleted or migrated. Their old `Application Support/HarnessPDFs` directory is no longer used; do not mistake those legacy copies for newly created files.
 
-Direct Google Drive sign-in, live folder browsing, automatic sync, Google Docs export, and speech control are not implemented. V1 here is PDF import plus glasses selection. PDFs never need public sharing.
+## Folder navigation
+
+On the phone choose **Choose PDFs from Files / Drive** or **Choose a folder**, then **Browse on glasses**. Selected locations form the first menu. Folders have a `Folder:` label. Select one to list its immediate subfolders and PDFs, three entries per page. Use **More**, **Previous**, **Up**, and **Refresh**. Refresh re-reads the selected provider directory; it is not a background cloud sync.
+
+File providers do not all offer folder selection, persistent folder permissions, or recursive descendant access. **Google Drive folder support and bookmark persistence must be tested on your iPhone.** If selecting a folder is unavailable or access fails, select individual PDFs instead. An expired/unavailable location may need to be selected again in the picker. A stale bookmark may resolve to a moved location, but automatic bookmark renewal is not implemented; reselect when necessary.
+
+The app does not enumerate your whole Google Drive account, use pasted URLs, authenticate to Google directly, or bypass provider permissions. Google Docs must be exported to PDFs outside the app. External symlink entries are omitted from folder lists.
+
+## Reading and controls
+
+Selecting a PDF opens its current provider content, checks page count, and renders pages on a worker task using PDFKit. Source page geometry/rotation is respected. The raster is inverted for bright content on the additive display; verify color-coded technical data on the real device.
+
+The native reading view sends a page image without app headings, borders, or persistent control buttons. Select/tap the view to request controls. Controls include Previous/Next, Zoom/Next section, Fit page, Documents, and Read. Actions return to the image-only view. Documents returns to the folder/menu page from which the document was opened.
+
+Zoom is 2× fit with four corner sections, not arbitrary pan. Very small print may still need a larger zoom feature later. Meta's host may add its own focus/system UI; verify actual appearance and selection behavior on the glasses. Raw gesture streams are not used; navigation relies on Meta's supported Display button/tap callbacks. The phone also has reading controls as a fallback.
+
+## Validation status
+
+**Source implementation only: not built with Xcode or tested on physical glasses.** This Linux workspace cannot compile PDFKit, SwiftUI, or the Meta iOS frameworks. Folder-provider behavior, security-scoped bookmark restoration, native image-only selection, background/locked-phone operation, and PDF readability are pending Mac/iPhone/glasses tests. Existing successful web-app tests do not validate this native companion.
 
 ## Open on your Mac
 
-Install Xcode 26.4 or later (the upstream sample requires Swift 6.3) and complete first launch. Use an iPhone running iOS 17.2 or newer.
+Use Xcode 26.4 or later / Swift 6.3 (the upstream sample requirements), and an iPhone running iOS 17.2 or newer.
 
 ```sh
 git clone https://github.com/bell-pepper/meta-harness-viewer.git
@@ -26,24 +44,20 @@ cd meta-harness-viewer
 open ios/DisplayAccess.xcodeproj
 ```
 
-If you already cloned this repository, pull main in that checkout instead of cloning over existing files.
+For an existing checkout, pull `main` without overwriting local work instead of cloning again.
 
 1. Let Xcode resolve Meta SDK **1.0.1**, pinned exactly in the project.
-2. Select the **DisplayAccess** target, then **Signing & Capabilities**. Select your Apple development team and change `com.bellpepper.HarnessHUD` to a bundle identifier unique to you. Enable automatic signing. The installed app is named **Harness HUD**.
-3. Connect and unlock your iPhone, trust the Mac, and enable **iPhone Developer Mode** if Xcode requests it. This is separate from Meta glasses Developer Mode.
-4. Select the iPhone as the run destination and press **Cmd+R**.
-5. Update Meta AI and the glasses firmware as needed. Enable Meta's **glasses Developer Mode**, which the upstream documentation places under Meta AI → Settings → your glasses → Developer Mode. If absent, this remains a prerequisite: check Meta's current developer setup/support guidance; do not guess hidden tap sequences or change unrelated settings.
-6. In the app, use registration/Settings to connect through Meta AI and approve the requested connection. Allow Bluetooth and local-network access. The Developer Mode configuration intentionally has no Meta app ID or client token. Other release channels require your own Wearables Developer Center setup.
-7. First use **Samples → Car maintenance guide → Try it**. Confirm it appears on the glasses and its buttons advance the tutorial. Resolve any firmware or glasses-app update prompt in Settings before testing PDFs.
-8. Return to **PDF Library** and import a PDF. Tap **Show document menu on glasses**. Select the document on the glasses, then use its native controls.
+2. Select target **DisplayAccess → Signing & Capabilities**. Choose your Apple development team and a unique bundle identifier. Enable automatic signing. The installed app is named **Harness HUD**.
+3. Connect/unlock your iPhone, trust the Mac, and enable iPhone Developer Mode if Xcode requests it. Select the iPhone and press **Cmd+R**.
+4. Complete Meta's native developer setup and app registration through Meta AI. This is separate from adding the existing web app and separate from iPhone Developer Mode. If the Meta Developer Mode setting is missing, resolve that with Meta's current developer guidance; no hidden tap sequence is assumed here.
+5. Approve Bluetooth/local-network access. First try Meta's retained **Samples → Car maintenance guide → Try it** to verify the native display connection. Resolve firmware or glasses-app update requirements in Settings.
+6. In **PDF Library**, choose files/folders, then **Browse on glasses**.
 
-The upstream project/target name stays DisplayAccess to keep the sample's build setup intact. No Google credentials or Apple signing credentials are included in this repository. Apple account signing availability and Meta device access must be verified on your Mac and phone.
+App signing and Meta native device access remain prerequisites. No Google OAuth or hosting credentials are needed for this Files-based companion. Google Drive account restrictions may still prevent file-provider access.
 
-## Google Drive import on the phone
+## Enable Google Drive in Files
 
-Install Google Drive, sign in, then open Apple's Files app → Browse → menu → Edit and enable Drive if it is offered. In Harness HUD, tap **Import PDFs from Files / Google Drive**, browse to the desired folder, and select PDFs. If the provider is unavailable, download a PDF into Files first and import that local file. Google Docs documents must first be exported as PDFs.
-
-Copies remain until deleted in this app or the app is uninstalled. Swipe a library row to delete its copy. This does not delete the original in Drive. Reimport after changing a source PDF; duplicates are allowed. Imported files use iOS app storage and its normal backup behavior.
+Install Google Drive and sign in on the phone. In Apple's Files app, go to Browse, open the menu, choose Edit, and enable Drive if offered. Verify you can open a PDF there first. Use the same provider in Harness HUD's picker. If that provider offers only file selection, choose the desired PDFs individually; do not change their sharing to public.
 
 ## Mac build check
 
@@ -56,26 +70,25 @@ xcodebuild -project ios/DisplayAccess.xcodeproj -scheme DisplayAccess \
   -derivedDataPath /tmp/HarnessHUD-DerivedData CODE_SIGNING_ALLOWED=NO build
 ```
 
-A simulator build checks compilation but does not validate the physical glasses. The original **Samples → Developer preview → In app** feature previews Meta's tutorial using MockDeviceKit; the custom PDF library is not wired to that preview surface yet.
+A simulator build checks compilation, not Drive provider or physical-glasses behavior. The original Samples → Developer preview → In app screen previews Meta's tutorial; the new file browser is not wired to that mock surface.
 
 ## Device acceptance checklist
 
-1. Import the included `fixtures/two-page-check.pdf` through Files. Verify both page labels and the four corner labels in zoom mode.
-2. Import a real portrait datasheet, a landscape PDF, and a rotated PDF. Verify page orientation, no stretched text, readable enlarged corners, and all display controls visible.
-3. Test first/last page boundaries, four zoom sections, Fit page, and Documents returning to the library.
-4. Import at least four PDFs; verify More and Previous in the document menu and correct selection.
-5. Force quit and reopen: imported filenames and files must remain. Delete a copy and reopen: it must stay deleted; Drive's original must remain.
-6. Try a locked PDF and a non-PDF renamed to `.pdf`: show a useful import error rather than adding an unusable file.
-7. Test with glasses disconnected and registration revoked: errors should be visible; reconnect through Settings. Test phone locking/background behavior on the actual device; do not assume live display continues.
+1. Choose the included `fixtures/two-page-check.pdf` from Files. Verify both pages and all four corner labels. Check portrait, landscape, and rotated PDFs.
+2. Select a local folder with at least four PDFs and a subfolder. Check folder/document labels, More/Previous, Up, Refresh, and returning to the correct folder from reading.
+3. Repeat with Google Drive. If folder grants fail, verify individual PDF selection works and the error explains reselecting on the phone.
+4. Force quit/reopen and use the saved references. Rename/move/delete a source and test refresh/reselection. Changing source content should be visible after reopening it; there is no app-managed PDF snapshot.
+5. Choose a locked/damaged PDF or a non-PDF renamed to `.pdf`. Confirm a useful error on phone and glasses, with a route back to Locations.
+6. Read a page and select it to show controls. Confirm Read/Next/Zoom returns to an image-only view and Documents returns to the originating folder. Check whether Meta's host adds system UI.
+7. Forget a location and confirm the original remains in Files/Drive. Confirm no new PDF copies or raster files appear in app-managed storage; only bookmark metadata is written by this implementation.
+8. Test slow downloads, offline cached files versus uncached files, disconnected glasses, locked phone/background suspension, and relaunch. Provider downloads cannot be cancelled by this prototype and there is no background-readiness guarantee.
 
-Do not use the prototype as an approved engineering instruction source until the displayed data and readability have been reviewed on the target device.
+Do not use sample pinouts as approved engineering instructions. Review source revision, content, color handling, and legibility before field use.
 
-## Upstream attribution and references
+## Attribution
 
-Connection lifecycle, registration, settings, tutorial assets, and project configuration are adapted from Meta's official DisplayAccess sample at commit `bbae597cd1c748cd29b9375a1624a8d75b1c9e14` (SDK 1.0.1). Original headers are retained. See `META-LICENSE` and `META-NOTICE`; use of the toolkit is subject to Meta's developer terms.
+Native registration, session management, sample assets and project configuration are adapted from Meta's DisplayAccess sample at `bbae597cd1c748cd29b9375a1624a8d75b1c9e14`, SDK 1.0.1. Original headers are preserved; see `META-LICENSE` and `META-NOTICE`.
 
 - https://github.com/facebook/meta-wearables-dat-ios/tree/main/samples/DisplayAccess
 - https://github.com/facebook/meta-wearables-dat-ios/blob/main/plugins/mwdat-ios/skills/display-access/SKILL.md
 - https://wearables.developer.meta.com/docs/develop/
-
-This implementation uses Display buttons and their callbacks. It does not depend on the separate experimental raw Inputs capability or map browser keyboard events to glasses controls.

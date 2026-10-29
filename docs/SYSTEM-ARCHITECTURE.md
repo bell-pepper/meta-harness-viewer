@@ -18,6 +18,14 @@ Official corroboration:
 - The generator documents `.well-known/meta-wearables-manifest.json` in the launch URL directory, with custom app name and appearance/icon metadata. This is separate from the ordinary PWA `manifest.webmanifest` in our existing site.
 - Meta's sample index uses `fb-viewapp://web_app_deep_link?appName=...&appUrl=...` for add-to-glasses QR links.
 
+## Latest selected workflow: phone Files provider, glasses navigation
+
+The user has chosen the simpler native companion workflow to avoid custom Google OAuth/hosting setup and app-managed PDF copies. The iPhone Files picker selects Google Drive or local PDFs/folders. The app saves security-scoped location bookmarks, browses permitted directories, and coordinates provider access only when listing or opening. PDFKit renders one current 600×600 page image for the glasses; document content is not copied into the repository or permanently duplicated by the app. Files/Google Drive may download/cache the whole selected PDF; zero local storage is not promised.
+
+Native folder browsing, pagination, Up/Refresh and image-only reading with on-demand controls are implemented in source. Drive folder grants, bookmark restoration, native display input, and background behavior still require Mac/iPhone/glasses validation. If Drive does not support persistent folder grants, the fallback is selecting individual PDFs. This approach starts from the phone; a native glasses launcher entry is still not established. See [native setup](../ios/README.md).
+
+The existing web viewer and private web-service implementation remain preserved as alternatives. Successful web-app testing is not evidence that the new native flow is ready on hardware.
+
 ## Recommended architecture for the icon-launch requirement
 
 ```mermaid
