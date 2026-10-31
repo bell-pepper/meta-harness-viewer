@@ -12,3 +12,8 @@ DerivedData/
 __pycache__/
 .pytest_cache/
 .venv/
+
+# Native Google client configuration (public IDs, kept local per developer)
+ios/GoogleDrive.local.xcconfig
+ios/DriveCore/.build/
+ios/DriveCore/.swiftpm/

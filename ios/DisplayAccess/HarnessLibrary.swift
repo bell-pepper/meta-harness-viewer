@@ -5,34 +5,13 @@ import CoreImage
 import UniformTypeIdentifiers
 import Observation
 import MWDATDisplay
-
-struct HarnessLocation: Codable, Identifiable, Sendable {
-  let id: UUID
-  let name: String
-  let bookmark: Data
-  let isFolder: Bool
-}
-
-struct HarnessDocument: Identifiable, Sendable {
-  let location: HarnessLocation
-  let path: [String]
-  let isFolder: Bool
-  var id: String { location.id.uuidString + "/" + path.joined(separator: "/") }
-  var title: String {
-    let name = path.last ?? location.name
-    return isFolder ? name : (name as NSString).deletingPathExtension
-  }
-  var parent: HarnessDocument? {
-    guard !path.isEmpty else { return nil }
-    return HarnessDocument(location: location, path: Array(path.dropLast()), isFolder: true)
-  }
-}
+import MWDATInputs
 
 private enum HarnessError: LocalizedError {
   case invalidPDF, unavailable, invalidFolder, changedDocument
   var errorDescription: String? {
     switch self {
-    case .invalidPDF: "Choose an unlocked PDF containing at least one page."
+    case .invalidPDF: "Choose an unlocked PDF containing 1–1000 pages."
     case .unavailable: "This location is unavailable. Check Drive/Files on your phone, then select the location again if needed."
     case .invalidFolder: "This provider cannot open the selected folder. Choose individual PDFs instead."
     case .changedDocument: "The PDF changed or that page is unavailable. Reopen it from Documents."
@@ -44,6 +23,7 @@ private enum HarnessError: LocalizedError {
 // selected root's security scope while coordinating each provider operation.
 private enum HarnessFiles {
   static func coordinate<T>(_ document: HarnessDocument, operation: (URL) throws -> T) throws -> T {
+    guard document.location.drive == nil else { throw HarnessError.unavailable }
     var stale = false
     let root: URL
     do {
@@ -80,7 +60,7 @@ private enum HarnessFiles {
     // Creating a bookmark does not parse/download the entire PDF into our app.
     let bookmark = try source.bookmarkData(options: [.minimalBookmark],
                                           includingResourceValuesForKeys: nil, relativeTo: nil)
-    return HarnessLocation(id: UUID(), name: source.lastPathComponent, bookmark: bookmark, isFolder: folder)
+    return HarnessLocation(id: UUID(), name: source.lastPathComponent, bookmark: bookmark, isFolder: folder, drive: nil)
   }
 
   static func children(of folder: HarnessDocument) throws -> [HarnessDocument] {
@@ -105,6 +85,10 @@ private enum HarnessFiles {
 @Observable @MainActor
 final class HarnessLibrary {
   private(set) var locations: [HarnessLocation] = []
+  let drive = HarnessGoogleDrive()
+  var availableLocations: [HarnessLocation] {
+    locations.filter { $0.drive == nil || $0.drive?.accountID == drive.accountID }
+  }
   var error: String?
   var busy = false
   private let metadataURL = URL.applicationSupportDirectory.appending(path: "HarnessLocations.json")
@@ -139,34 +123,73 @@ final class HarnessLibrary {
 
   func forget(_ offsets: IndexSet) {
     do {
-      let updated = locations.enumerated().filter { !offsets.contains($0.offset) }.map(\.element)
-      try save(updated)
+      let visible = availableLocations
+      let ids = Set(offsets.compactMap { visible.indices.contains($0) ? visible[$0].id : nil })
+      try save(locations.filter { !ids.contains($0.id) })
     } catch { self.error = error.localizedDescription }
     // Forgetting a reference never deletes a file or folder in Drive/Files.
   }
 
+  func forget(id: UUID) {
+    do { try save(locations.filter { $0.id != id }) }
+    catch { self.error = error.localizedDescription }
+  }
+
+  func selectDriveFolder(_ folder: HarnessDriveItem) throws {
+    guard folder.isFolder, let account = drive.accountID else { throw HarnessDriveError.signIn }
+    try HarnessDriveAPI.validateID(folder.id)
+    let existing = locations.first { $0.drive?.accountID == account && $0.drive?.folderID == folder.id }
+    let location = HarnessLocation(id: existing?.id ?? UUID(), name: folder.name, bookmark: Data(), isFolder: true,
+      drive: HarnessDriveLocation(accountID: account, folderID: folder.id))
+    try save(locations.filter { $0.id != location.id } + [location])
+  }
+
+  func pdfSource(for document: HarnessDocument) async throws -> HarnessPDFSource {
+    if document.location.drive != nil { return .drive(try await drive.pdf(document)) }
+    return .files(document)
+  }
+
   func entries(in folder: HarnessDocument?) async throws -> [HarnessDocument] {
     guard let folder else {
-      return locations.map { HarnessDocument(location: $0, path: [], isFolder: $0.isFolder) }
+      return availableLocations.map { HarnessDocument(location: $0, path: [], isFolder: $0.isFolder) }
     }
     guard folder.isFolder else { throw HarnessError.invalidFolder }
+    if folder.location.drive != nil {
+      return try await drive.children(of: folder).map {
+        HarnessDocument(location: folder.location, path: [], isFolder: $0.isFolder, drivePath: folder.drivePath + [$0])
+      }
+    }
     return try await Task.detached(priority: .userInitiated) { try HarnessFiles.children(of: folder) }.value
   }
 }
 
-// PDFKit objects stay inside a worker operation. Only small raster PNG bytes
-// cross to the main actor; no PDF or page raster is written into app storage.
+enum HarnessPDFSource: Sendable {
+  case files(HarnessDocument)
+  case drive(Data)
+}
+
+// Only the current Drive PDF is held in memory. Local PDFs retain their existing
+// Files-provider access. PDFKit objects never cross the worker boundary.
 private enum HarnessPDFRenderer {
-  static func count(_ document: HarnessDocument) throws -> Int {
-    try HarnessFiles.coordinate(document) { url in
-      guard let pdf = PDFDocument(url: url), !pdf.isLocked, pdf.pageCount > 0 else { throw HarnessError.invalidPDF }
-      return pdf.pageCount
+  private static func withPDF<T>(_ source: HarnessPDFSource, operation: (PDFDocument) throws -> T) throws -> T {
+    func read(_ pdf: PDFDocument?) throws -> T {
+      guard let pdf, !pdf.isLocked, (1...1000).contains(pdf.pageCount) else { throw HarnessError.invalidPDF }
+      return try operation(pdf)
+    }
+    switch source {
+    case .files(let document):
+      return try HarnessFiles.coordinate(document) { try read(PDFDocument(url: $0)) }
+    case .drive(let data):
+      return try read(PDFDocument(data: data))
     }
   }
 
-  static func render(_ document: HarnessDocument, page index: Int, quadrant: Int?) throws -> Data {
-    try HarnessFiles.coordinate(document) { url in
-      guard let pdf = PDFDocument(url: url), !pdf.isLocked else { throw HarnessError.invalidPDF }
+  static func count(_ source: HarnessPDFSource) throws -> Int {
+    try withPDF(source) { $0.pageCount }
+  }
+
+  static func render(_ source: HarnessPDFSource, page index: Int, zoom: CGFloat, pan: CGPoint) throws -> Data {
+    try withPDF(source) { pdf in
       guard let page = pdf.page(at: index) else { throw HarnessError.changedDocument }
       let canvas = CGSize(width: 600, height: 600)
       let bounds = page.bounds(for: .cropBox)
@@ -174,7 +197,6 @@ private enum HarnessPDFRenderer {
       let size = rotation == 90 || rotation == 270
         ? CGSize(width: bounds.height, height: bounds.width) : bounds.size
       guard size.width > 0, size.height > 0 else { throw HarnessError.invalidPDF }
-      let zoom: CGFloat = quadrant == nil ? 1 : 2
       let scale = min(canvas.width / size.width, canvas.height / size.height) * zoom
       let drawingSize = CGSize(width: size.width * scale, height: size.height * scale)
       let format = UIGraphicsImageRendererFormat()
@@ -184,12 +206,8 @@ private enum HarnessPDFRenderer {
         UIColor.white.setFill()
         context.fill(CGRect(origin: .zero, size: canvas))
         var origin = CGPoint(x: (canvas.width - drawingSize.width) / 2, y: (canvas.height - drawingSize.height) / 2)
-        if let quadrant {
-          origin.x = drawingSize.width <= canvas.width ? (canvas.width - drawingSize.width) / 2
-            : quadrant % 2 == 0 ? 0 : canvas.width - drawingSize.width
-          origin.y = drawingSize.height <= canvas.height ? (canvas.height - drawingSize.height) / 2
-            : quadrant < 2 ? 0 : canvas.height - drawingSize.height
-        }
+        origin.x += max(-1, min(1, pan.x)) * max(0, drawingSize.width - canvas.width) / 2
+        origin.y += max(-1, min(1, pan.y)) * max(0, drawingSize.height - canvas.height) / 2
         page.thumbnail(of: drawingSize, for: .cropBox).draw(in: CGRect(origin: origin, size: drawingSize))
       }
       guard let input = CIImage(image: raster),
@@ -206,30 +224,49 @@ final class HarnessReader {
   var image: UIImage?
   var status = "Choose PDFs or a folder on your phone."
   var busy = false
+  private(set) var failure: String?
+  var documentName: String? {
+    guard let selected else { return nil }
+    return selected.drivePath.last?.name ?? selected.path.last ?? selected.location.name
+  }
+  var pageLabel: String { "Page \(page + 1) of \(pages)" }
+  var canGoBack: Bool { selected != nil && page > 0 }
+  var canGoForward: Bool { selected != nil && page + 1 < pages }
   private var selected: HarnessDocument?
+  private var source: HarnessPDFSource?
   private var folder: HarnessDocument?
-  private var menuIndex = 0
+  private var menuEntries: [HarnessDocument] = []
+  private var focusedIndex = 0
   private var library: HarnessLibrary?
   private var page = 0
   private var pages = 0
-  private var quadrant: Int?
+  private var zoom: CGFloat = 1
+  private var pan = CGPoint.zero
 
   func open(_ document: HarnessDocument, library: HarnessLibrary, display: DisplayViewModel) async {
     guard !busy, !display.isSending else { return }
     if document.isFolder { await menu(library, display: display, folder: document); return }
     self.library = library
-    if self.folder?.id != document.parent?.id { menuIndex = 0 }
+    display.onHarnessInput = { [weak self, weak display] event in
+      guard let self, let display else { return }
+      await self.handle(event, display: display)
+    }
     self.folder = document.parent
+    failure = nil
     selected = nil
+    source = nil
     image = nil
     busy = true
     status = "Opening \(document.title)… Drive may need to download it."
     do {
-      let count = try await Task.detached(priority: .userInitiated) { try HarnessPDFRenderer.count(document) }.value
+      let source = try await library.pdfSource(for: document)
+      let count = try await Task.detached(priority: .userInitiated) { try HarnessPDFRenderer.count(source) }.value
+      self.source = source
       selected = document
       page = 0
       pages = count
-      quadrant = nil
+      zoom = 1
+      pan = .zero
       busy = false
       await show(display)
     } catch {
@@ -241,90 +278,83 @@ final class HarnessReader {
   func menu(_ library: HarnessLibrary, display: DisplayViewModel, folder: HarnessDocument? = nil, index: Int = 0) async {
     guard !busy, !display.isSending else { return }
     self.library = library
+    display.onHarnessInput = { [weak self, weak display] event in
+      guard let self, let display else { return }
+      await self.handle(event, display: display)
+    }
     busy = true
     defer { busy = false }
     image = nil
+    source = nil
+    failure = nil
     do {
       let entries = try await library.entries(in: folder)
       self.folder = folder
       selected = nil
-      let start = min(max(index, 0), max(entries.count - 1, 0))
-      menuIndex = start
+      menuEntries = entries
+      focusedIndex = min(max(index, 0), max(entries.count - 1, 0))
       status = folder?.title ?? "Selected locations"
-      await display.send(
-        FlexBox(direction: .column, spacing: 8) {
-          MWDATDisplay.Text(folder?.title ?? "Harness files", style: .heading)
-          if entries.isEmpty {
-            MWDATDisplay.Text(folder == nil ? "Choose PDFs or a folder on your iPhone first." : "No PDF files or subfolders here.", style: .body)
-          } else {
-            MWDATDisplay.Text("\(start + 1)–\(min(start + 3, entries.count)) of \(entries.count)", style: .body)
-            for entry in entries.dropFirst(start).prefix(3) {
-              ButtonGroup {
-                MWDATDisplay.Button(label: String(((entry.isFolder ? "Folder: " : "") + entry.title).prefix(44)), style: .primary, onClick: {
-                  Task { @MainActor in await self.open(entry, library: library, display: display) }
-                })
-              }
-            }
-          }
-          ButtonGroup {
-            if start > 0 {
-              MWDATDisplay.Button(label: "Previous", style: .secondary, onClick: {
-                Task { @MainActor in await self.menu(library, display: display, folder: folder, index: max(0, start - 3)) }
-              })
-            }
-            if start + 3 < entries.count {
-              MWDATDisplay.Button(label: "More", style: .secondary, onClick: {
-                Task { @MainActor in await self.menu(library, display: display, folder: folder, index: start + 3) }
-              })
-            }
-            if let folder {
-              MWDATDisplay.Button(label: "Up", style: .secondary, onClick: {
-                Task { @MainActor in await self.menu(library, display: display, folder: folder.parent) }
-              })
-            }
-            MWDATDisplay.Button(label: "Refresh", style: .secondary, onClick: {
-              Task { @MainActor in await self.menu(library, display: display, folder: folder, index: start) }
-            })
-          }
-        }.padding(16)
-      )
+      await sendMenu(display)
     } catch { await showFailure(error, library: library, display: display) }
+  }
+
+  private func sendMenu(_ display: DisplayViewModel) async {
+    let entries = menuEntries
+    let start = (focusedIndex / 3) * 3
+    await display.send(
+      FlexBox(direction: .column, spacing: 8) {
+        MWDATDisplay.Text(folder?.title ?? "Harness files", style: .heading)
+        if entries.isEmpty {
+          MWDATDisplay.Text(folder == nil ? "Choose PDFs or a folder on your iPhone first." : "No PDF files or subfolders here.", style: .body)
+        } else {
+          MWDATDisplay.Text("\(start + 1)–\(min(start + 3, entries.count)) of \(entries.count)", style: .body)
+          for offset in start..<min(start + 3, entries.count) {
+            let entry = entries[offset]
+            MWDATDisplay.Text(
+              String(((offset == focusedIndex ? "> " : "  ")
+                + (entry.location.drive != nil && entry.drivePath.isEmpty ? "Drive: " : entry.isFolder ? "Folder: " : "")
+                + entry.title).prefix(44)), style: .body)
+          }
+        }
+        MWDATDisplay.Text("Navigate to browse · Select to open · Back to go up", style: .body)
+      }.padding(16)
+    )
   }
 
   private func showFailure(_ error: Error, library: HarnessLibrary, display: DisplayViewModel) async {
     status = error.localizedDescription
+    failure = error.localizedDescription
+    selected = nil
+    source = nil
+    image = nil
+    folder = nil
+    menuEntries = []
     await display.send(
       FlexBox(direction: .column, spacing: 12) {
         MWDATDisplay.Text("Could not open location", style: .heading)
-        MWDATDisplay.Text("Check Files or Drive on your phone. Re-select the location if access expired.", style: .body)
-        ButtonGroup {
-          MWDATDisplay.Button(label: "Locations", onClick: {
-            Task { @MainActor in await self.menu(library, display: display) }
-          })
-        }
+        MWDATDisplay.Text(String(error.localizedDescription.prefix(220)), style: .body)
+        MWDATDisplay.Text("Back to return to saved locations", style: .body)
       }.padding(16)
     )
   }
 
   func show(_ display: DisplayViewModel) async {
-    guard let selected, !busy, !display.isSending else { return }
+    guard let selected, let source, !busy, !display.isSending else { return }
     busy = true
     defer { busy = false }
-    let index = page, crop = quadrant
+    let index = page, magnification = zoom, offset = pan
     do {
       let data = try await Task.detached(priority: .userInitiated) {
-        try HarnessPDFRenderer.render(selected, page: index, quadrant: crop)
+        try HarnessPDFRenderer.render(source, page: index, zoom: magnification, pan: offset)
       }.value
       guard let rendered = UIImage(data: data) else { throw HarnessError.invalidPDF }
       image = rendered
-      status = "\(selected.title) · \(page + 1)/\(pages)" + (crop.map { " · section \($0 + 1)/4" } ?? "")
-      // Reading view sends only a page image. Select/tap opens controls.
+      status = "\(selected.title) · \(page + 1)/\(pages)" + (zoom > 1 ? " · \(Int(zoom))×" : "")
+      // Reading view sends only a page image; Inputs handles gestures.
       await display.send(
         FlexBox(direction: .column) {
           MWDATDisplay.Image(image: rendered, sizePreset: .fill)
-        }.padding(0).onTap {
-          Task { @MainActor in await self.controls(display) }
-        }
+        }.padding(0)
       )
     } catch {
       if let library { await showFailure(error, library: library, display: display) }
@@ -332,118 +362,82 @@ final class HarnessReader {
     }
   }
 
-  func controls(_ display: DisplayViewModel) async {
-    guard let selected, !busy, !display.isSending else { return }
-    await display.send(
-      FlexBox(direction: .column, spacing: 12) {
-        MWDATDisplay.Text(selected.title, style: .heading)
-        MWDATDisplay.Text("Page \(page + 1) of \(pages)", style: .body)
-        ButtonGroup {
-          if page > 0 {
-            MWDATDisplay.Button(label: "Previous", onClick: { Task { @MainActor in await self.turn(-1, display: display) } })
-          }
-          if page + 1 < pages {
-            MWDATDisplay.Button(label: "Next", onClick: { Task { @MainActor in await self.turn(1, display: display) } })
-          }
-          MWDATDisplay.Button(label: quadrant == nil ? "Zoom" : "Next section", onClick: {
-            Task { @MainActor in
-              guard !self.busy, !display.isSending else { return }
-              self.quadrant = self.quadrant.map { ($0 + 1) % 4 } ?? 0
-              await self.show(display)
-            }
-          })
+  func handle(_ event: InputEvent, display: DisplayViewModel) async {
+    guard !busy, !display.isSending, let library else { return }
+    switch event {
+    case .nav(let direction, _, _):
+      if selected == nil {
+        let delta = (direction == .up || direction == .left) ? -1 : 1
+        let next = min(max(focusedIndex + delta, 0), max(menuEntries.count - 1, 0))
+        if next != focusedIndex {
+          focusedIndex = next
+          await sendMenu(display)
         }
-        ButtonGroup {
-          MWDATDisplay.Button(label: "Fit page", onClick: {
-            Task { @MainActor in
-              guard !self.busy, !display.isSending else { return }
-              self.quadrant = nil
-              await self.show(display)
-            }
-          })
-          MWDATDisplay.Button(label: "Documents", onClick: {
-            Task { @MainActor in
-              if let library = self.library { await self.menu(library, display: display, folder: self.folder, index: self.menuIndex) }
-            }
-          })
-          MWDATDisplay.Button(label: "Read", onClick: { Task { @MainActor in await self.show(display) } }).actionRole(.primary)
+      } else if zoom == 1 {
+        if direction == .left { await turn(-1, display: display) }
+        if direction == .right { await turn(1, display: display) }
+      } else {
+        switch direction {
+        case .left: await move(1, 0, display: display)
+        case .right: await move(-1, 0, display: display)
+        case .up: await move(0, 1, display: display)
+        case .down: await move(0, -1, display: display)
         }
-      }.padding(16)
-    )
+      }
+    case .select:
+      if selected != nil {
+        zoom = zoom == 3 ? 1 : zoom + 1
+        pan = .zero
+        await show(display)
+      } else if menuEntries.indices.contains(focusedIndex) {
+        await open(menuEntries[focusedIndex], library: library, display: display)
+      }
+    case .back:
+      if selected != nil, zoom > 1 {
+        zoom = 1
+        pan = .zero
+        await show(display)
+      } else if selected != nil {
+        await menu(library, display: display, folder: folder, index: focusedIndex)
+      } else {
+        await menu(library, display: display, folder: folder?.parent)
+      }
+    case .drag(let action, _, _, let dx, let dy, _, _):
+      guard selected != nil, zoom > 1, action == .move,
+            dx.isFinite, dy.isFinite else { return }
+      // Delta sensitivity and orientation need verification on real hardware.
+      pan.x = max(-1, min(1, pan.x + CGFloat(dx)))
+      pan.y = max(-1, min(1, pan.y + CGFloat(dy)))
+      await show(display)
+    case .button, .capture:
+      break
+    @unknown default:
+      break
+    }
   }
 
   func turn(_ delta: Int, display: DisplayViewModel) async {
     guard !busy, !display.isSending else { return }
     page = min(max(page + delta, 0), max(pages - 1, 0))
-    quadrant = nil
+    zoom = 1
+    pan = .zero
+    await show(display)
+  }
+
+  func move(_ x: CGFloat, _ y: CGFloat, display: DisplayViewModel) async {
+    guard selected != nil, zoom > 1, !busy, !display.isSending else { return }
+    pan.x = max(-1, min(1, pan.x + x * 0.5))
+    pan.y = max(-1, min(1, pan.y + y * 0.5))
     await show(display)
   }
 
   func release() {
     image = nil
     selected = nil
+    source = nil
+    failure = nil
+    menuEntries = []
+    folder = nil
     status = "Page preview released. Files/Drive may keep its own cached download."
-  }
-}
-
-struct HarnessLibraryView: View {
-  var display: DisplayViewModel
-  @State private var library = HarnessLibrary()
-  @State private var reader = HarnessReader()
-  @State private var picking = false
-  @State private var pickingFolders = false
-
-  var body: some View {
-    List {
-      Section {
-        SwiftUI.Button("Choose PDFs from Files / Drive") { pickingFolders = false; picking = true }
-        SwiftUI.Button("Choose a folder") { pickingFolders = true; picking = true }
-        SwiftUI.Button("Browse on glasses") { Task { await reader.menu(library, display: display) } }
-        SwiftUI.Button("Show reading controls") { Task { await reader.controls(display) } }
-        SwiftUI.Button("Disconnect display and release preview") {
-          Task {
-            do { try await display.stopSession(); reader.release() }
-            catch { library.error = error.localizedDescription }
-          }
-        }
-      } footer: {
-        SwiftUI.Text("Only location references are saved. Opened PDFs may be downloaded and cached by Files or Google Drive. Folder access depends on the provider; choose individual PDFs if needed.")
-      }.disabled(library.busy || reader.busy || display.isSending)
-      Section {
-        if library.locations.isEmpty { SwiftUI.Text("Choose PDFs or folders above.").foregroundStyle(.secondary) }
-        ForEach(library.locations) { location in
-          SwiftUI.Button((location.isFolder ? "Folder: " : "") + location.name) {
-            Task {
-              await reader.open(HarnessDocument(location: location, path: [], isFolder: location.isFolder), library: library, display: display)
-            }
-          }.disabled(library.busy || reader.busy || display.isSending)
-        }.onDelete(perform: library.forget)
-      } header: { SwiftUI.Text("Selected locations") } footer: { SwiftUI.Text("Swipe to forget a location. Its original files are never deleted.") }
-      Section("Preview") {
-        SwiftUI.Text(reader.status)
-        if library.busy || reader.busy || display.isSending { ProgressView("Preparing…") }
-        if let image = reader.image {
-          SwiftUI.Image(uiImage: image).resizable().scaledToFit()
-          HStack {
-            SwiftUI.Button("Previous page") { Task { await reader.turn(-1, display: display) } }
-            Spacer()
-            SwiftUI.Button("Next page") { Task { await reader.turn(1, display: display) } }
-          }.disabled(reader.busy || display.isSending)
-        }
-        if let error = display.errorMessage { SwiftUI.Text(error).foregroundStyle(.red) }
-      }
-    }
-    .navigationTitle("Harness files")
-    .fileImporter(isPresented: $picking, allowedContentTypes: pickingFolders ? [.folder] : [.pdf], allowsMultipleSelection: true) { result in
-      switch result {
-      case .success(let urls):
-        let folders = pickingFolders
-        Task { await library.select(urls, folders: folders) }
-      case .failure(let error): library.error = error.localizedDescription
-      }
-    }
-    .alert("Files access", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
-      SwiftUI.Button("OK") { library.error = nil }
-    } message: { SwiftUI.Text(library.error ?? "") }
   }
 }

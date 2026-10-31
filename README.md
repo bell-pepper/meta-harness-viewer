@@ -38,11 +38,13 @@ This catalog is public on GitHub Pages. It is not a Google Drive connection, and
 
 The additional browser test `tests/library.cjs` checks multiple documents, variable page counts, title escaping, empty libraries, failed refreshes, and invalid page addresses. Run it using the same Playwright setup as `tests/webapp.cjs`.
 
-## Current direction: simpler iPhone Files companion
+## Current direction: native iPhone companion
 
-The selected approach is now the [native Files-based companion](ios/README.md): choose PDFs or folders from Google Drive's Files provider or local phone storage, save location bookmarks rather than PDF copies, and browse folders/documents on the glasses. No custom Google OAuth project or backend is needed for that workflow. Files/Drive can still download and cache a selected PDF. Native compilation and device/provider validation remain pending on the Mac and iPhone; the working web app is preserved.
+The [native companion](ios/README.md) supports direct Google sign-in, phone-side Drive folder selection and the same full-screen gesture viewer as local Files locations. Select folders once; saved locations appear when registered glasses connect with the app active. Direct Drive avoids reliance on Apple's Google Drive Files provider and requires no hosted backend. It does require a Google iOS OAuth client: see [Google Drive setup](ios/GOOGLE-DRIVE.md).
 
-The server-backed web integration below remains an alternative implementation, not a prerequisite for the new Files-based workflow.
+The user confirms the earlier native app builds, registers with Meta and displays documents on real glasses. Direct Drive, automatic library presentation and gesture changes still require an Xcode build/device validation. Nineteen isolated Drive API/model tests pass; live Google login has not been verified. The working web app is preserved.
+
+The server-backed web integration below remains an alternative implementation, not a prerequisite for the native workflow.
 
 ## Per-user private Google Drive
 
@@ -115,7 +117,7 @@ The QR code encodes the public app name and launch URL only. Change the URL cons
 
 ## Other architecture and sources
 
-[Architecture review](docs/SYSTEM-ARCHITECTURE.md) records the discovery of the Web Apps platform. [ios/](ios/README.md) preserves an optional, unbuilt native companion prototype, not a prerequisite for this web app.
+[Architecture review](docs/SYSTEM-ARCHITECTURE.md) records the discovery of the Web Apps platform. [ios/](ios/README.md) documents the native Drive/Files companion, not a prerequisite for this web app.
 
 - [Meta Web Apps and deployment guide](https://github.com/facebook/meta-wearables-webapp#4-deploy-to-glasses)
 - [Meta UI Toolkit, simulator, and samples](https://github.com/facebook/meta-ray-ban-display-ui-toolkit-web)

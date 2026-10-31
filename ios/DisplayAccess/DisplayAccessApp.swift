@@ -26,6 +26,9 @@ private enum AppTab: Hashable {
 struct DisplayAccessApp: App {
   @State private var wearablesViewModel: WearablesViewModel
   @State private var displayViewModel: DisplayViewModel
+  @State private var library = HarnessLibrary()
+  @State private var reader = HarnessReader()
+  @Environment(\.scenePhase) private var scenePhase
   @State private var selectedTab: AppTab = .library
 
   init() {
@@ -46,9 +49,13 @@ struct DisplayAccessApp: App {
     WindowGroup {
       TabView(selection: $selectedTab) {
         NavigationStack {
-          HarnessLibraryView(display: displayViewModel)
+          HarnessLibraryView(
+            display: displayViewModel, library: library, reader: reader,
+            glassesAvailable: wearablesViewModel.deviceItemStates.contains { !$0.isPhonePreview && $0.linkState == .connected },
+            openSettings: { selectedTab = .settings }
+          )
         }
-        .tabItem { Label("PDF Library", systemImage: "doc.richtext") }
+        .tabItem { Label("Library", systemImage: "doc.text") }
         .tag(AppTab.library)
 
         NavigationStack {
@@ -63,6 +70,7 @@ struct DisplayAccessApp: App {
             setDeveloperPreviewMode: setDeveloperPreviewMode
           )
         }
+        .harnessSheetStyle()
         .tabItem {
           Label("Samples", systemImage: "eyeglasses")
         }
@@ -94,10 +102,25 @@ struct DisplayAccessApp: App {
             )
           )
         }
+        .harnessSheetStyle()
         .tabItem {
           Label("Settings", systemImage: "gearshape")
         }
         .tag(AppTab.settings)
+      }
+      .tint(HarnessTheme.mint)
+      .preferredColorScheme(.dark)
+      .toolbarBackground(HarnessTheme.background, for: .tabBar)
+      .toolbarBackground(.visible, for: .tabBar)
+      .task { await library.drive.restore() }
+      .task(id: libraryConnectionKey) {
+        // A new connected device/foreground activation can recreate a stopped
+        // session. Do not retry continuously after errors or an explicit stop.
+        guard scenePhase == .active, !library.drive.busy, !library.availableLocations.isEmpty,
+              wearablesViewModel.registrationState == .registered,
+              wearablesViewModel.deviceItemStates.contains(where: { !$0.isPhonePreview && $0.linkState == .connected }),
+              !displayViewModel.isConnected, !displayViewModel.isSending else { return }
+        await reader.menu(library, display: displayViewModel)
       }
       .alert("Error", isPresented: $wearablesViewModel.showError) {
         Button("OK") { wearablesViewModel.dismissError() }
@@ -107,6 +130,13 @@ struct DisplayAccessApp: App {
 
       RegistrationView(viewModel: wearablesViewModel)
     }
+  }
+
+  private var libraryConnectionKey: String {
+    let devices = wearablesViewModel.deviceItemStates
+      .filter { !$0.isPhonePreview && $0.linkState == .connected }
+      .map { String(describing: $0.identifier) }.sorted().joined(separator: ",")
+    return "\(scenePhase)-\(wearablesViewModel.registrationState)-\(devices)-\(library.availableLocations.count)-\(library.drive.accountID ?? "")-\(library.drive.busy)"
   }
 
   private func setDeveloperPreviewMode(_ mode: DeveloperPreviewMode?) async -> Bool {

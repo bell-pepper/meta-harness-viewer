@@ -14,6 +14,7 @@
 //
 
 import MWDATCore
+import GoogleSignIn
 import SwiftUI
 
 struct RegistrationView: View {
@@ -22,6 +23,7 @@ struct RegistrationView: View {
   var body: some View {
     EmptyView()
       .onOpenURL { url in
+        if GIDSignIn.sharedInstance.handle(url) { return }
         guard
           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
           components.queryItems?.contains(where: { $0.name == "metaWearablesAction" }) == true

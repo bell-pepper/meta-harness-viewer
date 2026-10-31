@@ -1,0 +1,4 @@
+// Optional per-developer configuration. Local Files/Meta work without Google.
+GOOGLE_IOS_CLIENT_ID =
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.harnesshud-unconfigured
+#include? "GoogleDrive.local.xcconfig"

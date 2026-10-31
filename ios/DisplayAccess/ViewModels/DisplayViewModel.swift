@@ -16,6 +16,7 @@
 
 import MWDATCore
 import MWDATDisplay
+import MWDATInputs
 import Observation
 import SwiftUI
 
@@ -26,14 +27,84 @@ protocol DisplayDeviceSession: AnyObject {
   func start() throws(DeviceSessionError)
   func stop()
   func addDisplay() throws(DeviceSessionError) -> Display
+  func addInputs(configuration: InputsConfiguration) throws(DeviceSessionError) -> Inputs?
+  func removeInputs() throws(DeviceSessionError)
 }
 
 extension DeviceSession: DisplayDeviceSession {}
+
+extension DisplayDeviceSession {
+  func addInputs(configuration: InputsConfiguration) throws(DeviceSessionError) -> Inputs? { nil }
+  func removeInputs() throws(DeviceSessionError) {}
+}
 
 @Observable
 @MainActor
 class DisplayViewModel {
   var isConnected: Bool = false
+  var inputStatus = "Gestures not attached"
+  private(set) var gesturesActive = false
+  private(set) var inputProblem: String?
+  @ObservationIgnored var onHarnessInput: ((InputEvent) async -> Void)?
+  @ObservationIgnored private var inputs: Inputs?
+  @ObservationIgnored private var inputTask: Task<Void, Never>?
+  @ObservationIgnored private var inputErrorToken: AnyListenerToken?
+  @ObservationIgnored private var inputStateToken: AnyListenerToken?
+
+  private func attachInputs() {
+    guard onHarnessInput != nil, inputs == nil, let deviceSession else { return }
+    do {
+      guard let capability = try deviceSession.addInputs(configuration: InputsConfiguration(
+        sources: [.captouch, .neuralBand, .neuralBandDrag], consumeBack: true
+      )) else {
+        inputStatus = "Gestures unavailable. Reconnect after enabling Inputs in Meta Developer Center."
+        inputProblem = inputStatus
+        return
+      }
+      inputs = capability
+      gesturesActive = capability.state == .active
+      inputProblem = nil
+      inputStatus = "Gestures: \(capability.state)"
+      inputStateToken = capability.statePublisher.listen { [weak self] state in
+        Task { @MainActor in
+          self?.inputStatus = "Gestures: \(state)"
+          self?.gesturesActive = state == .active
+          if state == .active { self?.inputProblem = nil }
+        }
+      }
+      inputErrorToken = capability.errorPublisher.listen { [weak self] error in
+        Task { @MainActor in
+          guard let self else { return }
+          self.inputStatus = "Gestures failed: \(error.description). Check Inputs enablement in Meta Developer Center, then reconnect."
+          self.inputProblem = self.inputStatus
+          self.gesturesActive = false
+        }
+      }
+      inputTask = Task { [weak self] in
+        for await event in capability.events {
+          guard let self, !Task.isCancelled else { return }
+          await self.onHarnessInput?(event)
+        }
+      }
+    } catch {
+      inputStatus = "Could not attach gestures: \(error.localizedDescription)"
+      inputProblem = inputStatus
+      gesturesActive = false
+    }
+  }
+
+  private func removeInputs() {
+    inputTask?.cancel()
+    inputTask = nil
+    inputErrorToken = nil
+    inputStateToken = nil
+    if inputs != nil { try? deviceSession?.removeInputs() }
+    inputs = nil
+    gesturesActive = false
+    inputProblem = nil
+    inputStatus = "Gestures not attached"
+  }
+
   private(set) var isSending: Bool = false
   private(set) var lastSentPreviewDeviceIdentifier: DeviceIdentifier?
   var errorMessage: String?
@@ -85,6 +156,7 @@ class DisplayViewModel {
     registrationTask?.cancel()
     displayReadinessTimeoutTask?.cancel()
     displayStateTask?.cancel()
+    inputTask?.cancel()
   }
 
   // MARK: - Registration Observation
@@ -122,6 +194,7 @@ class DisplayViewModel {
     errorMessage = nil
 
     if let display, isConnected {
+      attachInputs()
       let targetDeviceIdentifier = deviceIdentifier ?? activeDeviceIdentifier
       if targetDeviceIdentifier != nil {
         lastSentPreviewDeviceIdentifier = nil
@@ -258,6 +331,7 @@ class DisplayViewModel {
           case .started:
             self.finishDisplayReadinessWait()
             self.isConnected = true
+            self.attachInputs()
             // Execute pending action now that display is ready
             if let action = self.pendingAction {
               self.pendingAction = nil
@@ -312,6 +386,8 @@ class DisplayViewModel {
   // MARK: - Car Maintenance
 
   func sendCarMaintenanceTutorialList(deviceIdentifier: DeviceIdentifier? = nil) async {
+    onHarnessInput = nil
+    removeInputs()
     await send(
       CarMaintenanceDisplay.tutorialList { [weak self] index in
         Task { @MainActor in
@@ -403,6 +479,7 @@ class DisplayViewModel {
   }
 
   func stopSession() async throws {
+    removeInputs()
     pendingAction = nil
     errorMessage = nil
     guard let deviceSession else {
@@ -429,6 +506,7 @@ class DisplayViewModel {
   }
 
   private func clearSessionState() {
+    removeInputs()
     isConnected = false
     isSending = false
     lastSentPreviewDeviceIdentifier = nil

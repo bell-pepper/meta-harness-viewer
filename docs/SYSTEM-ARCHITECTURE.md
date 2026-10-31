@@ -18,13 +18,15 @@ Official corroboration:
 - The generator documents `.well-known/meta-wearables-manifest.json` in the launch URL directory, with custom app name and appearance/icon metadata. This is separate from the ordinary PWA `manifest.webmanifest` in our existing site.
 - Meta's sample index uses `fb-viewapp://web_app_deep_link?appName=...&appUrl=...` for add-to-glasses QR links.
 
-## Latest selected workflow: phone Files provider, glasses navigation
+## Latest selected workflow: native Google Drive and Files, glasses navigation
 
-The user has chosen the simpler native companion workflow to avoid custom Google OAuth/hosting setup and app-managed PDF copies. The iPhone Files picker selects Google Drive or local PDFs/folders. The app saves security-scoped location bookmarks, browses permitted directories, and coordinates provider access only when listing or opening. PDFKit renders one current 600×600 page image for the glasses; document content is not copied into the repository or permanently duplicated by the app. Files/Google Drive may download/cache the whole selected PDF; zero local storage is not promised.
+The native iPhone companion now supports direct Google Sign-In and Drive REST access alongside the existing Files-provider bookmarks. Google Drive need not be installed/enabled in Files for the direct route. An iOS OAuth client and read-only Drive consent are required; a custom backend is not. Phone-side My Drive folder selection persists stable folder/account IDs, with each account seeing only its own saved Drive locations. See [Google Drive setup](../ios/GOOGLE-DRIVE.md).
 
-Native folder browsing, pagination, Up/Refresh and image-only reading with on-demand controls are implemented in source. Drive folder grants, bookmark restoration, native display input, and background behavior still require Mac/iPhone/glasses validation. If Drive does not support persistent folder grants, the fallback is selecting individual PDFs. This approach starts from the phone; a native glasses launcher entry is still not established. See [native setup](../ios/README.md).
+Google Sign-In manages token persistence/restoration/refresh. The phone lists immediate subfolders/PDFs, follows API pagination, revalidates saved roots and ancestry on access, and downloads only the current PDF into memory (25 MiB / 1000 pages). PDFKit produces one current 600×600 raster for the phone preview and glasses. No tokens or PDF bytes are sent to glasses; no permanent PDF copy or page cache is created. Leaving the document or disconnecting releases the current PDF. Existing bookmark-only location metadata remains readable.
 
-The existing web viewer and private web-service implementation remain preserved as alternatives. Successful web-app testing is not evidence that the new native flow is ready on hardware.
+The user confirms the earlier native app compiles, registers with Meta, and displays documents on real glasses. Saved locations now live at app scope and are presented on registered physical-device connection or foreground activation. The viewer retains image-only reading and uses experimental MWDATInputs for zoom, pan, pages and folder navigation. These changes and direct Google authorization still require an Xcode build and real-device testing. Nineteen Foundation-only API/model tests pass with simulated Google responses; this does not establish live authorization, token restoration or hardware readiness.
+
+The Files path remains available for local/provider content, with bookmark/provider behavior requiring device checks. Dedicated shared-drive discovery and Google Docs export are not implemented in the direct chooser. This companion starts from the phone; native glasses-launcher access and operation while the phone is suspended/terminated remain unestablished. The existing web viewer and server-backed Drive service remain separate alternatives.
 
 ## Recommended architecture for the icon-launch requirement
 
@@ -71,7 +73,7 @@ PDFium processes PDFs in bounded child processes. Twelve backend tests pass, as 
 5. Activate the selected server-backed design: configure Google OAuth and backend hosting, then set the public service origin in drive-config.js. Public sharing is not required. Do not promise live access before real-account tests pass.
 6. Verify cookies/storage persistence, network availability, cache limits, suspend/resume, and whether the phone is needed for connectivity. A website being reachable from the phone does not validate these properties.
 
-The existing 600×600 browser prototype remains a starting point. The native iOS project is source-only and still unbuilt/unverified. The following DAT-specific review is preserved as a historical record of that alternative; its statements about missing web-app/launcher evidence are superseded by this correction.
+The existing 600×600 browser prototype remains a starting point. The native iOS app has since been built and displays documents on hardware, as confirmed by the user. The following DAT-specific review is preserved as a historical record of that alternative; its statements about missing web-app/launcher evidence are superseded by this correction.
 
 ---
 
