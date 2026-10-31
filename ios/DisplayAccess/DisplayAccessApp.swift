@@ -116,11 +116,12 @@ struct DisplayAccessApp: App {
       .task(id: libraryConnectionKey) {
         // A new connected device/foreground activation can recreate a stopped
         // session. Do not retry continuously after errors or an explicit stop.
-        guard scenePhase == .active, !library.drive.busy, !library.availableLocations.isEmpty,
+        guard scenePhase == .active, selectedTab == .library,
               wearablesViewModel.registrationState == .registered,
               wearablesViewModel.deviceItemStates.contains(where: { !$0.isPhonePreview && $0.linkState == .connected }),
-              !displayViewModel.isConnected, !displayViewModel.isSending else { return }
-        await reader.menu(library, display: displayViewModel)
+              (!displayViewModel.isConnected || displayViewModel.onHarnessInput == nil),
+              !displayViewModel.isSending else { return }
+        await reader.presentLibrary(library, display: displayViewModel)
       }
       .alert("Error", isPresented: $wearablesViewModel.showError) {
         Button("OK") { wearablesViewModel.dismissError() }
@@ -136,7 +137,7 @@ struct DisplayAccessApp: App {
     let devices = wearablesViewModel.deviceItemStates
       .filter { !$0.isPhonePreview && $0.linkState == .connected }
       .map { String(describing: $0.identifier) }.sorted().joined(separator: ",")
-    return "\(scenePhase)-\(wearablesViewModel.registrationState)-\(devices)-\(library.availableLocations.count)-\(library.drive.accountID ?? "")-\(library.drive.busy)"
+    return "\(scenePhase)-\(selectedTab)-\(wearablesViewModel.registrationState)-\(devices)-\(library.availableLocations.count)-\(library.drive.accountID ?? "")-\(library.drive.busy)"
   }
 
   private func setDeveloperPreviewMode(_ mode: DeveloperPreviewMode?) async -> Bool {

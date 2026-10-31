@@ -29,9 +29,9 @@ The layout scrolls on smaller phones and uses native menus, sheets, tabs, access
 
 ## Folder navigation
 
-Choose folders or PDFs once on the phone. Saved locations appear when registered glasses connect while the app is active, or when the app returns to the foreground. Tap the glasses card, then Open library on glasses, after an error or manual stop.
+Choose folders or PDFs once on the phone. With the Library tab active, connecting glasses or returning to the foreground opens the last remembered available folder (or a single saved folder from older builds). Multiple locations remain available by going Back to the saved-locations screen. Tap the glasses card, then Open library on glasses, after an error or manual stop.
 
-The glasses list uses text with a `>` marker for the selected entry. Up/Left moves to the previous entry; Down/Right moves to the next, scrolling through groups of three. Select opens the entry. Back goes up one folder; at saved locations it remains at the root. Reopening a folder re-reads its provider contents.
+The glasses list uses native card backgrounds, clean folder/document symbols and a caret on the selected row. Up/Left moves to the previous entry; Down/Right moves to the next, scrolling through groups of three. Select opens the entry. Back goes up one folder; at saved locations it remains at the root. Reopening a folder re-reads its provider contents. With no saved locations, the app sends a Harness HUD welcome screen asking you to choose a folder on the phone; it no longer skips display startup and leaves previous content visible. Saved Drive folders while signed out prompt for reconnection rather than reselection.
 
 Providers differ in folder selection, persistent bookmark permissions, and descendant access. Test Google Drive folder support on your iPhone; individual PDFs remain the fallback. Expired references require reselection. Files/Drive may download/cache PDFs; no app-managed PDF copy is made.
 
@@ -123,3 +123,11 @@ Verified directly against the public Swift interface in Meta SDK tag `1.0.1`, co
 [Meta Inputs guide](https://github.com/facebook/meta-wearables-dat-ios/blob/main/plugins/mwdat-ios/skills/inputs/SKILL.md).
 
 Retest on Mac/iPhone/glasses: build with Inputs linked; verify active state or an actionable denial; choose saved folders after relaunch/reconnect; navigate more than three entries and nested folders; test each gesture at fit/2×/3×, all edges and page boundaries, drag orientation, repeated Select (one zoom step per event), Back, interruptions, and reconnect. Test suspended/locked/terminated phone states separately; automatic launch there is not promised.
+
+## Back gesture troubleshooting
+
+The production DeviceSession bridge now explicitly calls Meta's `addInputs` / `removeInputs`, with no default no-op protocol implementation. Inputs is added after DeviceSession starts and before Display starts, with `consumeBack: true`. Library/document Back remains an in-app action; it does not call stopSession or exit.
+
+The middle-finger/thumb physical mapping and system consumption still need device verification. On the phone, open the glasses card → Gesture input. Check **Gestures: active**, use **Restart gesture input** if needed, and inspect the last five semantic events (source and type only; no document content). Report whether **Back received** appears before **Display ended**. An Inputs permission/availability failure must be resolved in Meta's developer configuration; application navigation cannot intercept gestures that Meta does not deliver.
+
+Core validation now has 23 passing tests, including remembered-folder restoration and missing/mismatched Google settings. The new glasses layout and physical Back gesture have not been verified in this Linux environment.

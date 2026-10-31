@@ -132,7 +132,7 @@ struct HarnessLibraryView: View {
     .sheet(isPresented: $showingReader) { readerSheet }
     .onChange(of: library.availableLocations.map(\.id)) { _, _ in
       guard display.isConnected else { return }
-      Task { await reader.menu(library, display: display) }
+      Task { await reader.presentLibrary(library, display: display) }
     }
     .fileImporter(isPresented: $picking, allowedContentTypes: pickingFolders ? [.folder] : [.pdf], allowsMultipleSelection: true) { result in
       switch result {
@@ -321,7 +321,7 @@ struct HarnessLibraryView: View {
                 do { try await display.stopSession(); reader.release() }
                 catch { library.error = error.localizedDescription; return }
               }
-              await reader.menu(library, display: display)
+              await reader.presentLibrary(library, display: display)
             }
           }
             .disabled(working || library.availableLocations.isEmpty)
@@ -336,6 +336,17 @@ struct HarnessLibraryView: View {
         }
         Section("Gesture input") {
           Text(display.inputStatus).font(.subheadline)
+          Button("Restart gesture input") { display.restartGestureInput() }
+            .disabled(working || !display.isConnected)
+          if display.recentInputs.isEmpty {
+            Text("No gesture events received yet.").font(.caption).foregroundStyle(HarnessTheme.secondary)
+          } else {
+            ForEach(Array(display.recentInputs.enumerated()), id: \.offset) { _, event in
+              Text(event).font(.caption).foregroundStyle(HarnessTheme.secondary)
+            }
+          }
+          Text("Harness HUD requests Back events while Inputs is active. If the middle-finger gesture exits, note whether Back appears here so we can distinguish app navigation from a system action.")
+            .font(.caption).foregroundStyle(HarnessTheme.secondary)
           Text("Select changes zoom. Navigate to change pages at fit, or pan at zoom. Back returns to fit, then documents.")
             .font(.subheadline).foregroundStyle(HarnessTheme.secondary)
         }

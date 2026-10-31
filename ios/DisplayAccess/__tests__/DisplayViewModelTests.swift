@@ -10,6 +10,7 @@
 import Foundation
 @_spi(Testing) import MWDATCore
 import MWDATDisplay
+import MWDATInputs
 import Testing
 
 private final class StubWearables: WearablesInterface, Sendable {
@@ -107,6 +108,9 @@ private final class StalledDisplayDeviceSession: DisplayDeviceSession {
     stateContinuation.finish()
     errorContinuation.finish()
   }
+
+  func addHarnessInputs(configuration: InputsConfiguration) throws(DeviceSessionError) -> Inputs? { nil }
+  func removeHarnessInputs() throws(DeviceSessionError) {}
 
   func addDisplay() throws(DeviceSessionError) -> Display {
     throw .sessionIdle

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        AE0100000000000000000001 = {isa = PBXBuildFile; fileRef = AE0200000000000000000001; };
         AD0100000000000000000001 = {isa = PBXBuildFile; fileRef = AD0200000000000000000001; };
         AC0100000000000000000005 = {isa = PBXBuildFile; fileRef = AC0200000000000000000004; };
         AC0100000000000000000001 = {isa = PBXBuildFile; fileRef = AC0200000000000000000001; };
@@ -42,6 +43,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        AE0200000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../DriveCore/Sources/HarnessDriveCore/SetupState.swift; sourceTree = "<group>"; };
         AD0200000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HarnessLibraryView.swift; sourceTree = "<group>"; };
         AC0200000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../DriveCore/Sources/HarnessDriveCore/Documents.swift; sourceTree = "<group>"; };
         AC0200000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HarnessGoogleDrive.swift; sourceTree = "<group>"; };
@@ -109,6 +111,7 @@
                 AD0200000000000000000001,
                 AC0200000000000000000002,
                 AC0200000000000000000004,
+                AE0200000000000000000001,
 				DB0200000000000B /* Info.plist */,
 			);
 			path = DisplayAccess;
@@ -228,6 +231,7 @@
                 AD0100000000000000000001,
                 AC0100000000000000000002,
                 AC0100000000000000000005,
+                AE0100000000000000000001,
 				DB01000000000002 /* CarMaintenanceDisplay.swift in Sources */,
 				DB01000000000003 /* DisplayViewModel.swift in Sources */,
 				DB01000000000004 /* WearablesViewModel.swift in Sources */,

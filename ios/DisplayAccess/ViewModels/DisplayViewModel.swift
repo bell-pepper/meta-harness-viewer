@@ -27,15 +27,16 @@ protocol DisplayDeviceSession: AnyObject {
   func start() throws(DeviceSessionError)
   func stop()
   func addDisplay() throws(DeviceSessionError) -> Display
-  func addInputs(configuration: InputsConfiguration) throws(DeviceSessionError) -> Inputs?
-  func removeInputs() throws(DeviceSessionError)
+  func addHarnessInputs(configuration: InputsConfiguration) throws(DeviceSessionError) -> Inputs?
+  func removeHarnessInputs() throws(DeviceSessionError)
 }
 
-extension DeviceSession: DisplayDeviceSession {}
-
-extension DisplayDeviceSession {
-  func addInputs(configuration: InputsConfiguration) throws(DeviceSessionError) -> Inputs? { nil }
-  func removeInputs() throws(DeviceSessionError) {}
+// Use explicit witnesses: production sessions always call the real SDK APIs.
+extension DeviceSession: DisplayDeviceSession {
+  func addHarnessInputs(configuration: InputsConfiguration) throws(DeviceSessionError) -> Inputs? {
+    try addInputs(configuration: configuration)
+  }
+  func removeHarnessInputs() throws(DeviceSessionError) { try removeInputs() }
 }
 
 @Observable
@@ -45,6 +46,30 @@ class DisplayViewModel {
   var inputStatus = "Gestures not attached"
   private(set) var gesturesActive = false
   private(set) var inputProblem: String?
+  private(set) var recentInputs: [String] = []
+
+  private func record(_ event: InputEvent) {
+    let label: String
+    switch event {
+    case .nav(let direction, _, _): label = "Navigate \(direction)"
+    case .select: label = "Select"
+    case .back: label = "Back received"
+    case .drag(let action, _, _, _, _, _, _):
+      guard action != .move else { return }
+      label = "Drag \(action)"
+    case .button: label = "Button"
+    case .capture: label = "Capture"
+    @unknown default: label = "Unknown input"
+    }
+    recentInputs.append("\(label) · \(event.source)")
+    recentInputs = Array(recentInputs.suffix(5))
+  }
+
+  func restartGestureInput() {
+    guard isConnected, onHarnessInput != nil else { return }
+    removeInputs()
+    attachInputs()
+  }
   @ObservationIgnored var onHarnessInput: ((InputEvent) async -> Void)?
   @ObservationIgnored private var inputs: Inputs?
   @ObservationIgnored private var inputTask: Task<Void, Never>?
@@ -54,7 +79,7 @@ class DisplayViewModel {
   private func attachInputs() {
     guard onHarnessInput != nil, inputs == nil, let deviceSession else { return }
     do {
-      guard let capability = try deviceSession.addInputs(configuration: InputsConfiguration(
+      guard let capability = try deviceSession.addHarnessInputs(configuration: InputsConfiguration(
         sources: [.captouch, .neuralBand, .neuralBandDrag], consumeBack: true
       )) else {
         inputStatus = "Gestures unavailable. Reconnect after enabling Inputs in Meta Developer Center."
@@ -83,6 +108,7 @@ class DisplayViewModel {
       inputTask = Task { [weak self] in
         for await event in capability.events {
           guard let self, !Task.isCancelled else { return }
+          self.record(event)
           await self.onHarnessInput?(event)
         }
       }
@@ -98,7 +124,7 @@ class DisplayViewModel {
     inputTask = nil
     inputErrorToken = nil
     inputStateToken = nil
-    if inputs != nil { try? deviceSession?.removeInputs() }
+    if inputs != nil { try? deviceSession?.removeHarnessInputs() }
     inputs = nil
     gesturesActive = false
     inputProblem = nil
@@ -276,6 +302,8 @@ class DisplayViewModel {
           switch sessionState {
           case .started:
             self.requiresDATAppUpdate = false
+            // Register consumeBack before presenting the first glasses screen.
+            self.attachInputs()
             await self.setupDisplay(on: devSession)
           case .stopping:
             self.isConnected = false
@@ -340,6 +368,8 @@ class DisplayViewModel {
           case .stopping:
             self.isConnected = false
           case .stopped:
+            self.recentInputs.append("Display ended")
+            self.recentInputs = Array(self.recentInputs.suffix(5))
             self.isConnected = false
             self.stateListenerToken = nil
             self.displayStateContinuation?.finish()

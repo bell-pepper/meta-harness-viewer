@@ -2,7 +2,7 @@
 
 Harness HUD now has a native Google connection, separate from Apple's Files picker and the optional web backend. Sign in on the phone, choose folders once, then browse their subfolders/PDFs on the glasses using the existing gesture viewer. The Google Drive app does not need to be installed or enabled in Files for this route.
 
-**Implementation and isolated API/model tests are complete; live Google authorization and the iOS build/device flow have not been tested here.** Google OAuth is not configured in this checkout. Until configured, the phone shows that Google Drive is not enabled for this build. This does not affect local Files or Meta registration.
+**Implementation and isolated API/model tests are complete; live Google authorization and the iOS build/device flow have not been tested here.** Google OAuth is not configured in this checkout. Until configured, the phone shows **Google setup required**, identifies missing/invalid client settings or a mismatched callback scheme, and offers a one-time setup checklist with the installed bundle identifier. This does not affect local Files or Meta registration.
 
 ## Configure Google once for the app
 
@@ -33,7 +33,7 @@ Harness HUD now has a native Google connection, separate from Apple's Files pick
 
 1. In **Library**, open the **Google Drive** card and tap **Sign in with Google** and allow read-only Drive access.
 2. In Google Drive management, tap **Choose a Google Drive folder**, or use the Library’s **+ → Google Drive folder**. Browse My Drive's folders on the phone and tap **Use folder: …**. Repeat to save more folders. Selecting My Drive itself is also supported.
-3. Keep the app active and connect registered glasses. Saved folders for the signed-in Google account appear alongside local Files locations. If the display is already connected, saving/removing a location refreshes its menu. Tap the glasses card, then **Open library on glasses**, after errors or a manual stop.
+3. Keep the app active and connect registered glasses. The last saved folder reopens automatically; Back returns to all saved locations for that Google account and local Files. If the display is already connected, saving/removing a location refreshes its menu. Tap the glasses card, then **Open library on glasses**, after errors or a manual stop.
 4. On the glasses, navigate/select folders and PDFs. Select cycles fit → 2× → 3× → fit; navigation changes pages at fit and pans at zoom; drag moves the zoomed page; Back returns to fit, then documents. No glasses viewer buttons are added.
 5. Use **Reconnect / switch Google account** if authorization expires or you want another account. Saved Drive folders are bound to the account that selected them; another account does not inherit them. Disconnect/switch first stops the display and releases the current PDF/preview.
 6. **Disconnect Google Drive** signs out locally and attempts Google-side revocation. If revocation cannot be confirmed, remove the connection in your Google Account settings. Saved folder IDs remain for reconnecting the same account but are hidden while signed out or using another account. Swipe an available saved location to forget it; this never deletes its source folder.
@@ -57,7 +57,7 @@ The Foundation-only API and document models are built from the same source files
 swift test --package-path ios/DriveCore
 ```
 
-19 tests pass on Swift 6.0.3/Linux: pagination/filtering, query/path validation, repeated cursors, incomplete results, nested-folder membership, moved/deleted/restricted PDFs, download limits, response validation, HTTP errors, stable references and old Files metadata compatibility. These tests use simulated Drive responses, not a live Google account.
+23 tests pass on Swift 6.0.3/Linux: pagination/filtering, query/path validation, repeated cursors, incomplete results, nested-folder membership, moved/deleted/restricted PDFs, download limits, response validation, HTTP errors, stable references, old Files metadata compatibility, saved-folder restoration and Google client/callback configuration. These tests use simulated Drive responses, not a live Google account.
 
 From the repository root on a Mac:
 

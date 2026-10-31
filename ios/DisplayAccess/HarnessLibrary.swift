@@ -86,6 +86,9 @@ private enum HarnessFiles {
 final class HarnessLibrary {
   private(set) var locations: [HarnessLocation] = []
   let drive = HarnessGoogleDrive()
+  private let preferences = HarnessLibraryPreferences()
+  var preferredFolder: HarnessDocument? { preferences.preferredFolder(in: availableLocations) }
+  func remember(_ location: HarnessLocation) { preferences.remember(location) }
   var availableLocations: [HarnessLocation] {
     locations.filter { $0.drive == nil || $0.drive?.accountID == drive.accountID }
   }
@@ -117,6 +120,7 @@ final class HarnessLibrary {
           try HarnessFiles.remember(url, folder: folders)
         }.value
         try save(locations + [location])
+        preferences.remember(location)
       } catch { self.error = error.localizedDescription }
     }
   }
@@ -126,12 +130,16 @@ final class HarnessLibrary {
       let visible = availableLocations
       let ids = Set(offsets.compactMap { visible.indices.contains($0) ? visible[$0].id : nil })
       try save(locations.filter { !ids.contains($0.id) })
+      for id in ids { preferences.forget(id) }
     } catch { self.error = error.localizedDescription }
     // Forgetting a reference never deletes a file or folder in Drive/Files.
   }
 
   func forget(id: UUID) {
-    do { try save(locations.filter { $0.id != id }) }
+    do {
+      try save(locations.filter { $0.id != id })
+      preferences.forget(id)
+    }
     catch { self.error = error.localizedDescription }
   }
 
@@ -142,6 +150,7 @@ final class HarnessLibrary {
     let location = HarnessLocation(id: existing?.id ?? UUID(), name: folder.name, bookmark: Data(), isFolder: true,
       drive: HarnessDriveLocation(accountID: account, folderID: folder.id))
     try save(locations.filter { $0.id != location.id } + [location])
+    preferences.remember(location)
   }
 
   func pdfSource(for document: HarnessDocument) async throws -> HarnessPDFSource {
@@ -243,6 +252,10 @@ final class HarnessReader {
   private var zoom: CGFloat = 1
   private var pan = CGPoint.zero
 
+  func presentLibrary(_ library: HarnessLibrary, display: DisplayViewModel) async {
+    await menu(library, display: display, folder: library.preferredFolder)
+  }
+
   func open(_ document: HarnessDocument, library: HarnessLibrary, display: DisplayViewModel) async {
     guard !busy, !display.isSending else { return }
     if document.isFolder { await menu(library, display: display, folder: document); return }
@@ -252,6 +265,7 @@ final class HarnessReader {
       await self.handle(event, display: display)
     }
     self.folder = document.parent
+    library.remember(document.location)
     failure = nil
     selected = nil
     source = nil
@@ -290,6 +304,7 @@ final class HarnessReader {
     do {
       let entries = try await library.entries(in: folder)
       self.folder = folder
+      if let folder { library.remember(folder.location) }
       selected = nil
       menuEntries = entries
       focusedIndex = min(max(index, 0), max(entries.count - 1, 0))
@@ -301,23 +316,47 @@ final class HarnessReader {
   private func sendMenu(_ display: DisplayViewModel) async {
     let entries = menuEntries
     let start = (focusedIndex / 3) * 3
+    let reconnectGoogle = folder == nil && library?.locations.contains(where: { $0.drive != nil }) == true
     await display.send(
-      FlexBox(direction: .column, spacing: 8) {
-        MWDATDisplay.Text(folder?.title ?? "Harness files", style: .heading)
+      FlexBox(direction: .column, spacing: 14, crossAlignment: .stretch) {
+        FlexBox(direction: .row, spacing: 12, crossAlignment: .center) {
+          MWDATDisplay.Icon(name: .smartGlasses, style: .outline)
+          MWDATDisplay.Text(folder?.title ?? "Harness HUD", style: .heading).flexGrow(1)
+        }
         if entries.isEmpty {
-          MWDATDisplay.Text(folder == nil ? "Choose PDFs or a folder on your iPhone first." : "No PDF files or subfolders here.", style: .body)
+          FlexBox(direction: .column, spacing: 16, crossAlignment: .center) {
+            MWDATDisplay.Icon(name: folder == nil ? .phone : .iCircle, style: .outline)
+            MWDATDisplay.Text(folder == nil ? (reconnectGoogle ? "Reconnect Google Drive" : "Choose a folder on your phone") : "No PDFs or subfolders", style: .heading)
+            MWDATDisplay.Text(folder == nil
+              ? (reconnectGoogle ? "Open Google Drive on your iPhone and sign in again. Your saved folders are still remembered."
+                : "Open Harness HUD on your iPhone. Add a Google Drive or Files folder.")
+              : "Add a PDF to this folder, then reopen it to refresh.", style: .body)
+            if folder == nil {
+              MWDATDisplay.Text("Saved folders open here automatically next time.", style: .meta, color: .secondary)
+            }
+          }.padding(24).background(.card)
         } else {
-          MWDATDisplay.Text("\(start + 1)–\(min(start + 3, entries.count)) of \(entries.count)", style: .body)
           for offset in start..<min(start + 3, entries.count) {
             let entry = entries[offset]
-            MWDATDisplay.Text(
-              String(((offset == focusedIndex ? "> " : "  ")
-                + (entry.location.drive != nil && entry.drivePath.isEmpty ? "Drive: " : entry.isFolder ? "Folder: " : "")
-                + entry.title).prefix(44)), style: .body)
+            FlexBox(direction: .row, spacing: 16, crossAlignment: .center) {
+              if let icon = UIImage(systemName: entry.isFolder ? "folder" : "doc.text",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 30, weight: .medium)) {
+                MWDATDisplay.Image(image: icon.withTintColor(.white, renderingMode: .alwaysOriginal), sizePreset: .icon)
+              }
+              FlexBox(direction: .column, spacing: 4) {
+                MWDATDisplay.Text(String(entry.title.prefix(38)), style: .body)
+                MWDATDisplay.Text(entry.isFolder ? (entry.location.drive == nil ? "Files folder" : "Google Drive folder") : "PDF document",
+                  style: .meta, color: .secondary)
+              }.flexGrow(1)
+              if offset == focusedIndex {
+                MWDATDisplay.Icon(name: .caretRight, style: .filled)
+              }
+            }.padding(16).background(.card)
           }
+          MWDATDisplay.Text("\(focusedIndex + 1) of \(entries.count)   •   Select to open", style: .meta, color: .secondary)
         }
-        MWDATDisplay.Text("Navigate to browse · Select to open · Back to go up", style: .body)
-      }.padding(16)
+        if folder != nil { MWDATDisplay.Text("Back: up one level", style: .meta, color: .secondary) }
+      }.padding(20)
     )
   }
 

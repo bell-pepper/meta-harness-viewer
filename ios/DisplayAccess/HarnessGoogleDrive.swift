@@ -52,13 +52,14 @@ final class HarnessGoogleDrive {
     api = HarnessDriveAPI { request, limit in try await transport.fetch(request, limit: limit) }
   }
 
-  var isConfigured: Bool {
-    guard let id = Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String,
-          id.hasSuffix(".apps.googleusercontent.com"), !id.contains("$(") else { return false }
-    let reversed = id.split(separator: ".").reversed().joined(separator: ".")
+  var configurationState: HarnessGoogleConfiguration {
+    let id = Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String
     let types = Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]] ?? []
-    return types.contains { ($0["CFBundleURLSchemes"] as? [String] ?? []).contains(reversed) }
+    let schemes = types.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
+    return HarnessGoogleConfiguration.inspect(clientID: id, schemes: schemes)
   }
+
+  var isConfigured: Bool { configurationState == .ready }
 
   private func configure() throws {
     guard isConfigured,
@@ -287,7 +288,25 @@ struct HarnessGoogleDriveSettingsView: View {
       } else if library.drive.isConfigured {
         GoogleSignInButton(scheme: .light, style: .wide) { Task { await library.drive.signIn() } }
       } else {
-        SwiftUI.Text("Google Drive is not enabled in this build yet.")
+        Label("Google setup required", systemImage: "exclamationmark.circle")
+          .font(.headline).foregroundStyle(.orange)
+        SwiftUI.Text(library.drive.configurationState.message ?? "Configure Google sign-in for this build.")
+        DisclosureGroup("One-time setup on your Mac") {
+          VStack(alignment: .leading, spacing: 14) {
+            SwiftUI.Text("1. Enable Google Drive API and configure the OAuth consent screen in Google Cloud. Add your account as a test user if the app is in testing.")
+            SwiftUI.Text("2. Create an iOS OAuth client for this app's bundle identifier:")
+            SwiftUI.Text(Bundle.main.bundleIdentifier ?? "Check Signing & Capabilities in Xcode")
+              .font(.callout.monospaced()).textSelection(.enabled)
+            SwiftUI.Text("3. Copy ios/GoogleDrive.local.xcconfig.example to ios/GoogleDrive.local.xcconfig on your Mac. Set the iOS client ID and its reversed client ID. No client secret is needed.")
+            if case .missingCallback(let scheme) = library.drive.configurationState {
+              SwiftUI.Text("Expected callback scheme:")
+              SwiftUI.Text(scheme).font(.callout.monospaced()).textSelection(.enabled)
+            }
+            SwiftUI.Text("4. Rebuild and run on this iPhone. The Sign in with Google button will then appear here. Saved folders stay available after reconnecting the same account.")
+            Link("Open Google Cloud credentials", destination: URL(string: "https://console.cloud.google.com/apis/credentials")!)
+          }
+          .font(.subheadline).padding(.vertical, 8)
+        }
       }
       if library.drive.busy { ProgressView("Connecting…") }
       if let error = library.drive.error { SwiftUI.Text(error).foregroundStyle(.red) }

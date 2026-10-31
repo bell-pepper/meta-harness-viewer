@@ -42,7 +42,7 @@ The additional browser test `tests/library.cjs` checks multiple documents, varia
 
 The [native companion](ios/README.md) supports direct Google sign-in, phone-side Drive folder selection and the same full-screen gesture viewer as local Files locations. Select folders once; saved locations appear when registered glasses connect with the app active. Direct Drive avoids reliance on Apple's Google Drive Files provider and requires no hosted backend. It does require a Google iOS OAuth client: see [Google Drive setup](ios/GOOGLE-DRIVE.md).
 
-The user confirms the earlier native app builds, registers with Meta and displays documents on real glasses. Direct Drive, automatic library presentation and gesture changes still require an Xcode build/device validation. Nineteen isolated Drive API/model tests pass; live Google login has not been verified. The working web app is preserved.
+The user confirms the earlier native app builds, registers with Meta and displays documents on real glasses. Direct Drive, automatic library presentation and gesture changes still require an Xcode build/device validation. Twenty-three isolated Drive API/model/setup tests pass; live Google login has not been verified. The working web app is preserved.
 
 The server-backed web integration below remains an alternative implementation, not a prerequisite for the native workflow.
 
