@@ -345,9 +345,9 @@ struct HarnessLibraryView: View {
               Text(event).font(.caption).foregroundStyle(HarnessTheme.secondary)
             }
           }
-          Text("Harness HUD requests Back events while Inputs is active. If the middle-finger gesture exits, note whether Back appears here so we can distinguish app navigation from a system action.")
+          Text("Meta SDK 1.0.x does not deliver the middle-finger Back gesture on real glasses. It closes the glasses app even with consumeBack enabled. Restarting gesture input cannot change that system behaviour.")
             .font(.caption).foregroundStyle(HarnessTheme.secondary)
-          Text("Select changes zoom. Navigate to change pages at fit, or pan at zoom. Back returns to fit, then documents.")
+          Text("Select cycles fit, 2× and 3×. At fit: Left/Right changes pages; Up returns to documents. At zoom: directions pan. In folder lists: Up/Down browses; Left goes up; Select opens. The middle-finger Back gesture still exits.")
             .font(.subheadline).foregroundStyle(HarnessTheme.secondary)
         }
       }

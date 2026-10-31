@@ -353,9 +353,9 @@ final class HarnessReader {
               }
             }.padding(16).background(.card)
           }
-          MWDATDisplay.Text("\(focusedIndex + 1) of \(entries.count)   •   Select to open", style: .meta, color: .secondary)
+          MWDATDisplay.Text("\(focusedIndex + 1) of \(entries.count)   •   Up/Down to browse", style: .meta, color: .secondary)
+          MWDATDisplay.Text(folder == nil ? "Select or Right to open" : "Select to open • Left to go up", style: .meta, color: .secondary)
         }
-        if folder != nil { MWDATDisplay.Text("Back: up one level", style: .meta, color: .secondary) }
       }.padding(20)
     )
   }
@@ -372,7 +372,7 @@ final class HarnessReader {
       FlexBox(direction: .column, spacing: 12) {
         MWDATDisplay.Text("Could not open location", style: .heading)
         MWDATDisplay.Text(String(error.localizedDescription.prefix(220)), style: .body)
-        MWDATDisplay.Text("Back to return to saved locations", style: .body)
+        MWDATDisplay.Text("Navigate Left to return to saved locations.", style: .body)
       }.padding(16)
     )
   }
@@ -406,15 +406,30 @@ final class HarnessReader {
     switch event {
     case .nav(let direction, _, _):
       if selected == nil {
-        let delta = (direction == .up || direction == .left) ? -1 : 1
-        let next = min(max(focusedIndex + delta, 0), max(menuEntries.count - 1, 0))
-        if next != focusedIndex {
-          focusedIndex = next
-          await sendMenu(display)
+        switch direction {
+        case .left:
+          // Hardware Back exits in SDK 1.0.x. Use a delivered navigation
+          // event to move up without stopping the session.
+          await menu(library, display: display, folder: folder?.parent)
+        case .right:
+          if menuEntries.indices.contains(focusedIndex) {
+            await open(menuEntries[focusedIndex], library: library, display: display)
+          }
+        case .up, .down:
+          let delta = direction == .up ? -1 : 1
+          let next = min(max(focusedIndex + delta, 0), max(menuEntries.count - 1, 0))
+          if next != focusedIndex {
+            focusedIndex = next
+            await sendMenu(display)
+          }
         }
       } else if zoom == 1 {
-        if direction == .left { await turn(-1, display: display) }
-        if direction == .right { await turn(1, display: display) }
+        switch direction {
+        case .left: await turn(-1, display: display)
+        case .right: await turn(1, display: display)
+        case .up: await menu(library, display: display, folder: folder, index: focusedIndex)
+        case .down: break
+        }
       } else {
         switch direction {
         case .left: await move(1, 0, display: display)

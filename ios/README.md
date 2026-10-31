@@ -31,7 +31,7 @@ The layout scrolls on smaller phones and uses native menus, sheets, tabs, access
 
 Choose folders or PDFs once on the phone. With the Library tab active, connecting glasses or returning to the foreground opens the last remembered available folder (or a single saved folder from older builds). Multiple locations remain available by going Back to the saved-locations screen. Tap the glasses card, then Open library on glasses, after an error or manual stop.
 
-The glasses list uses native card backgrounds, clean folder/document symbols and a caret on the selected row. Up/Left moves to the previous entry; Down/Right moves to the next, scrolling through groups of three. Select opens the entry. Back goes up one folder; at saved locations it remains at the root. Reopening a folder re-reads its provider contents. With no saved locations, the app sends a Harness HUD welcome screen asking you to choose a folder on the phone; it no longer skips display startup and leaves previous content visible. Saved Drive folders while signed out prompt for reconnection rather than reselection.
+The glasses list uses native card backgrounds, clean folder/document symbols and a caret on the selected row. Up/Down moves between entries, scrolling through groups of three. Select or Right opens the entry. Left goes up one folder; at saved locations it remains at the root. The physical middle-finger Back gesture exits on current hardware. Reopening a folder re-reads its provider contents. With no saved locations, the app sends a Harness HUD welcome screen asking you to choose a folder on the phone; it no longer skips display startup and leaves previous content visible. Saved Drive folders while signed out prompt for reconnection rather than reselection.
 
 Providers differ in folder selection, persistent bookmark permissions, and descendant access. Test Google Drive folder support on your iPhone; individual PDFs remain the fallback. Expired references require reselection. Files/Drive may download/cache PDFs; no app-managed PDF copy is made.
 
@@ -43,11 +43,12 @@ Reading remains full-screen and image-only, without tap handlers or viewer butto
 | --- | --- | --- |
 | Select | Zoom to 2× | 2× → 3× → fit |
 | Left / Right | Previous / next page | Pan toward left / right |
-| Up / Down | No action | Pan toward top / bottom |
+| Up | Return to documents | Pan toward top |
+| Down | No action | Pan toward bottom |
 | Drag move | No action | Move the page using reported deltas |
-| Back | Return to documents | Return to fit |
+| Semantic Back (mock / future hardware support) | Return to documents | Return to fit |
 
-Zoom changes and page turns reset pan. Pan stops at page edges; axes that fit remain centered. Use Back to fit before changing pages while zoomed. Phone Previous/Next remain available as a fallback.
+Zoom changes and page turns reset pan. Pan stops at page edges; axes that fit remain centered. Middle-finger Back currently exits on real glasses; see the hardware limitation below. Cycle Select to fit before changing pages while zoomed. Phone Previous/Next remain available as a fallback. Gesture-only return uses Up at fit and Left in folders, avoiding the hardware Back gesture. These are semantic navigation events; verify the corresponding physical inputs on the device.
 
 This uses **experimental MWDATInputs**, included in pinned SDK 1.0.1. Enable Inputs for this app in Wearables Developer Center; it is not an iOS runtime permission. The phone shows activation state and errors. Only captouch, neuralBand, and neuralBandDrag sources are requested; hardware capture/action buttons are not mapped.
 
@@ -98,11 +99,11 @@ A simulator build checks compilation, not Drive provider or physical-glasses beh
 ## Device acceptance checklist
 
 1. Choose the included `fixtures/two-page-check.pdf` from Files. Verify both pages and all four corner labels. Check portrait, landscape, and rotated PDFs.
-2. Select a local folder with at least four PDFs and a subfolder. Check gesture navigation across list pages, Back to go up, reopening to refresh, and returning to the originating folder.
+2. Select a local folder with at least four PDFs and a subfolder. Check gesture navigation across list pages, Left to go up, reopening to refresh, and returning to the originating folder.
 3. Follow the direct Google Drive acceptance checks in [GOOGLE-DRIVE.md](GOOGLE-DRIVE.md). For the optional Files provider, verify individual PDFs if folder grants fail.
 4. Force quit/reopen and use the saved references. Rename/move/delete a source and test refresh/reselection. Changing source content should be visible after reopening it; there is no app-managed PDF snapshot.
 5. Choose a locked/damaged PDF or a non-PDF renamed to `.pdf`. Confirm a useful error on phone and glasses, with a route back to Locations.
-6. Verify the gesture table above; confirm the page remains image-only throughout and Back from fit returns to the originating folder.
+6. Verify the gesture table above; confirm the page remains image-only throughout and Up at fit returns to the originating folder.
 7. Forget a location and confirm the original remains in Files/Drive. Confirm no new PDF copies or raster files appear in app-managed storage; only location metadata is written by this implementation (Google Sign-In manages its own authorization storage).
 8. Test slow downloads, offline cached files versus uncached files, disconnected glasses, locked phone/background suspension, and relaunch. Provider downloads cannot be cancelled by this prototype and there is no background-readiness guarantee.
 
@@ -124,10 +125,14 @@ Verified directly against the public Swift interface in Meta SDK tag `1.0.1`, co
 
 Retest on Mac/iPhone/glasses: build with Inputs linked; verify active state or an actionable denial; choose saved folders after relaunch/reconnect; navigate more than three entries and nested folders; test each gesture at fit/2×/3×, all edges and page boundaries, drag orientation, repeated Select (one zoom step per event), Back, interruptions, and reconnect. Test suspended/locked/terminated phone states separately; automatic launch there is not promised.
 
-## Back gesture troubleshooting
+## Hardware Back limitation (SDK 1.0.x)
 
-The production DeviceSession bridge now explicitly calls Meta's `addInputs` / `removeInputs`, with no default no-op protocol implementation. Inputs is added after DeviceSession starts and before Display starts, with `consumeBack: true`. Library/document Back remains an in-app action; it does not call stopSession or exit.
+The user's hardware trace receives Neural Band Select/Drag and then ends the display session with no Back event. A matching [public Meta issue and response](https://github.com/meta/meta-wearables-dat-ios/issues/349#issuecomment-6300429308) reports that real glasses in SDK 1.0.0/1.0.1 handle Back by closing the app; `consumeBack` only affects MockDeviceKit. The latest public tag checked during diagnosis is still 1.0.1. Changing registration, source filters or attachment order is not a verified remedy.
 
-The middle-finger/thumb physical mapping and system consumption still need device verification. On the phone, open the glasses card → Gesture input. Check **Gestures: active**, use **Restart gesture input** if needed, and inspect the last five semantic events (source and type only; no document content). Report whether **Back received** appears before **Display ended**. An Inputs permission/availability failure must be resolved in Meta's developer configuration; application navigation cannot intercept gestures that Meta does not deliver.
+The production DeviceSession bridge explicitly calls Meta's `addInputs` / `removeInputs`, with Inputs added before Display and `consumeBack: true`. Keep semantic `.back` handling for MockDeviceKit and future hardware support, but do not promise that it intercepts the middle-finger/thumb gesture on current glasses. Do not infer a Back event from arbitrary session termination or automatically reopen the app after every shutdown.
 
-Core validation now has 23 passing tests, including remembered-folder restoration and missing/mismatched Google settings. The new glasses layout and physical Back gesture have not been verified in this Linux environment.
+On the phone, the glasses card → Gesture input shows a bounded event history and current state. **Gestures not attached** after **Display ended** describes teardown, not proof that gesture activation failed initially. **Restart gesture input** can retry an inactive capability while the session is running; it cannot override the system Back gesture.
+
+Core validation has 23 passing tests, including remembered-folder restoration and missing/mismatched Google settings. Physical gestures still require device testing; successful mock Back handling does not establish hardware support.
+
+The gesture-only fallback maps **Up while reading at fit** to the containing folder, **Left in a folder list** to its parent, and **Up/Down** to focus movement. **Select or Right** opens the focused entry. Directions still pan while zoomed; cycle Select to fit before using Up to leave the document. The native `.back` handler is retained for mocks/future SDKs, but middle-finger Back remains system exit on current hardware.
