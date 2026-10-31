@@ -22,6 +22,7 @@ struct HarnessDriveItem: Codable, Identifiable, Sendable, Equatable {
 enum HarnessDriveError: LocalizedError, Equatable {
   case configure, signIn, wrongAccount, permission, unavailable, invalidResponse
   case invalidID, notFolder, notPDF, moved, tooLarge, tooManyItems
+  case apiDisabled, insufficientScope, rateLimited
 
   var errorDescription: String? {
     switch self {
@@ -29,6 +30,9 @@ enum HarnessDriveError: LocalizedError, Equatable {
     case .signIn: "Sign in to Google Drive on your phone, then reopen the folder."
     case .wrongAccount: "This folder belongs to another saved Google connection. Sign in with the account that selected it."
     case .permission: "Google denied access. Check your Drive permissions and read-only consent, then reconnect if needed."
+    case .apiDisabled: "Enable Google Drive API in the Google Cloud project that owns your iOS OAuth client, then wait a few minutes and retry."
+    case .insufficientScope: "Google did not grant the required Drive permission. Reconnect Google on your phone and allow read-only Drive access."
+    case .rateLimited: "Google Drive is temporarily limiting requests. Wait a little, then retry."
     case .unavailable: "Google Drive could not be reached. Check your connection and try again."
     case .invalidResponse: "Google Drive returned an unexpected response. Try again."
     case .invalidID: "The saved Drive reference is invalid. Select the folder again."
@@ -144,6 +148,26 @@ struct HarnessDriveAPI: Sendable {
     catch { throw HarnessDriveError.invalidResponse }
   }
 
+  // Classify only known reason codes. Never display/log Google's raw message,
+  // request details, or links, which may contain account-specific information.
+  private func forbidden(_ data: Data) -> HarnessDriveError {
+    struct Failure: Decodable {
+      struct Body: Decodable {
+        struct Reason: Decodable { var reason: String? }
+        var errors: [Reason]?
+        var details: [Reason]?
+      }
+      var error: Body?
+    }
+    guard data.count <= 16 * 1024,
+          let body = try? JSONDecoder().decode(Failure.self, from: data).error else { return .permission }
+    let reasons = Set(((body.errors ?? []) + (body.details ?? [])).compactMap(\.reason))
+    if !reasons.isDisjoint(with: ["SERVICE_DISABLED", "accessNotConfigured"]) { return .apiDisabled }
+    if !reasons.isDisjoint(with: ["ACCESS_TOKEN_SCOPE_INSUFFICIENT", "insufficientPermissions"]) { return .insufficientScope }
+    if !reasons.isDisjoint(with: ["RATE_LIMIT_EXCEEDED", "rateLimitExceeded", "userRateLimitExceeded", "dailyLimitExceeded"]) { return .rateLimited }
+    return .permission
+  }
+
   private func request(path: String, query: [URLQueryItem], token: String, limit: Int = 4 * 1024 * 1024) async throws -> Data {
     guard !token.isEmpty else { throw HarnessDriveError.signIn }
     var components = URLComponents(string: "https://www.googleapis.com/drive/v3/" + path)!
@@ -164,8 +188,9 @@ struct HarnessDriveAPI: Sendable {
     switch response.statusCode {
     case 200: break
     case 401: throw HarnessDriveError.signIn
-    case 403: throw HarnessDriveError.permission
+    case 403: throw forbidden(data)
     case 404: throw HarnessDriveError.moved
+    case 429: throw HarnessDriveError.rateLimited
     default: throw HarnessDriveError.unavailable
     }
     guard data.count <= limit else { throw HarnessDriveError.tooLarge }

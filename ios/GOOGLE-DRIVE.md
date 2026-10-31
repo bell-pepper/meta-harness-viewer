@@ -24,6 +24,14 @@ Harness HUD now has a native Google connection, separate from Apple's Files pick
 
 `drive.readonly` is a restricted Google scope. Wider external distribution can require verification and other Google policy steps; testing-mode authorization can expire. Check current Google requirements before rollout. Meta's experimental Inputs release restrictions are separate from Google authorization.
 
+## If folder loading is denied after sign-in
+
+Creating an OAuth client does not enable the Drive API. In the **same Google Cloud project that owns the iOS client**, open APIs & Services → Library → Google Drive API. Click Enable if offered, allow a few minutes for the change, then Retry in Harness HUD. If it is already enabled, check read-only Drive consent and account/workspace permissions.
+
+The app now distinguishes Google's known disabled-service, insufficient-scope and request-limit reason codes. Unknown denials still use a generic permission message. Only a bounded 16 KiB error prefix is examined for known reason codes; raw messages/account details are not displayed, logged or persisted. Failed listings no longer claim the folder has no subfolders.
+
+For an iPhone-focused workflow with minimal developer configuration, **iCloud Drive through Add from Files** is an alternative. It does not need Google OAuth. Choose a folder once and test bookmark restoration after relaunch. Local On My iPhone folders also work; copying a Drive document there creates a separate copy that does not track cloud edits.
+
 ## Use it
 
 1. In **Library**, open the **Google Drive** card and tap **Sign in with Google** and allow read-only Drive access.
@@ -52,7 +60,7 @@ The Foundation-only API and document models are built from the same source files
 swift test --package-path ios/DriveCore
 ```
 
-23 tests pass on Swift 6.0.3/Linux: pagination/filtering, query/path validation, repeated cursors, incomplete results, nested-folder membership, moved/deleted/restricted PDFs, download limits, response validation, HTTP errors, stable references, old Files metadata compatibility, saved-folder restoration and Google client/callback configuration. These tests use simulated Drive responses, not a live Google account.
+26 tests pass on Swift 6.0.3/Linux: pagination/filtering, query/path validation, repeated cursors, incomplete results, nested-folder membership, moved/deleted/restricted PDFs, download limits, response validation, HTTP errors, stable references, old Files metadata compatibility, saved-folder restoration, Google client/callback configuration, disabled-API/scope/quota errors and safe handling of error bodies. These tests use simulated Drive responses, not a live Google account.
 
 From the repository root on a Mac:
 

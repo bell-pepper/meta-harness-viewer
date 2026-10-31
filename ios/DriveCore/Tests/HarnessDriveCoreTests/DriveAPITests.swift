@@ -158,3 +158,29 @@ private let pdfMetadata = #"{"id":"pdf_1","name":"Drawing.pdf","mimeType":"appli
     try await stub.api.descendant(root: "pdf_1", path: [], token: "test-token")
   }
 }
+
+@Test func disabledDriveAPIIsDistinguishedFromAccountPermissionDenial() async {
+  for json in [
+    #"{"error":{"message":"private project details","errors":[{"reason":"accessNotConfigured"}]}}"#,
+    #"{"error":{"details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"SERVICE_DISABLED","metadata":{"service":"drive.googleapis.com"}}]}}"#
+  ] {
+    let stub = DriveStub([.init(json, status: 403)])
+    await #expect(throws: HarnessDriveError.apiDisabled) { try await stub.api.item("root", token: "test-token") }
+  }
+}
+
+@Test func missingScopesAndQuotaHaveDifferentRecoveryInstructions() async {
+  let scopes = DriveStub([.init(#"{"error":{"details":[{"reason":"ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}}"#, status: 403)])
+  await #expect(throws: HarnessDriveError.insufficientScope) { try await scopes.api.item("root", token: "test-token") }
+  let quota = DriveStub([.init(#"{"error":{"errors":[{"reason":"userRateLimitExceeded"}]}}"#, status: 403)])
+  await #expect(throws: HarnessDriveError.rateLimited) { try await quota.api.item("root", token: "test-token") }
+  let throttled = DriveStub([.init("", status: 429)])
+  await #expect(throws: HarnessDriveError.rateLimited) { try await throttled.api.item("root", token: "test-token") }
+}
+
+@Test func arbitraryGoogleMessagesAndOversizedErrorBodiesAreNotDisplayed() async {
+  for json in ["private request contents", #"{"error":{"message":"private account details","errors":[{"reason":"unknownReason"}]}}"#, String(repeating: "x", count: 17 * 1024)] {
+    let stub = DriveStub([.init(json, status: 403)])
+    await #expect(throws: HarnessDriveError.permission) { try await stub.api.item("root", token: "test-token") }
+  }
+}

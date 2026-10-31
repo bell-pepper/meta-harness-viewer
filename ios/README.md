@@ -133,6 +133,6 @@ The production DeviceSession bridge explicitly calls Meta's `addInputs` / `remov
 
 On the phone, the glasses card → Gesture input shows a bounded event history and current state. **Gestures not attached** after **Display ended** describes teardown, not proof that gesture activation failed initially. **Restart gesture input** can retry an inactive capability while the session is running; it cannot override the system Back gesture.
 
-Core validation has 23 passing tests, including remembered-folder restoration and missing/mismatched Google settings. Physical gestures still require device testing; successful mock Back handling does not establish hardware support.
+Core validation has 26 passing tests, including remembered-folder restoration and missing/mismatched Google settings. Physical gestures still require device testing; successful mock Back handling does not establish hardware support.
 
 The gesture-only fallback maps **Up while reading at fit** to the containing folder, **Left in a folder list** to its parent, and **Up/Down** to focus movement. **Select or Right** opens the focused entry. Directions still pan while zoomed; cycle Select to fit before using Up to leave the document. The native `.back` handler is retained for mocks/future SDKs, but middle-finger Back remains system exit on current hardware.

@@ -24,12 +24,17 @@ private final class HarnessDriveTransport: NSObject, URLSessionTaskDelegate, Sen
     defer { session.invalidateAndCancel() }
     let (bytes, response) = try await session.bytes(for: request)
     guard let response = response as? HTTPURLResponse else { throw HarnessDriveError.invalidResponse }
-    guard response.expectedContentLength <= limit else { throw HarnessDriveError.tooLarge }
-    // Do not retain Google's error bodies (which can include request details).
-    guard response.statusCode == 200 else { return (Data(), response) }
+    let success = response.statusCode == 200
+    if success, response.expectedContentLength > limit { throw HarnessDriveError.tooLarge }
+    // Read only a bounded error prefix for reason-code classification. It is
+    // neither persisted nor logged; raw Google messages are not shown to users.
+    let responseLimit = success ? limit : 16 * 1024
     var result = Data()
     for try await byte in bytes {
-      if result.count >= limit { throw HarnessDriveError.tooLarge }
+      if result.count >= responseLimit {
+        if success { throw HarnessDriveError.tooLarge }
+        break
+      }
       result.append(byte)
     }
     return (result, response)
@@ -183,6 +188,7 @@ struct HarnessDriveFolderPicker: View {
   @State private var folders: [HarnessDriveItem] = []
   @State private var busy = false
   @State private var error: String?
+  @State private var loaded = false
 
   var body: some View {
     NavigationStack {
@@ -202,7 +208,9 @@ struct HarnessDriveFolderPicker: View {
         }
         Section("Folders") {
           if busy { ProgressView("Loading Google Drive…") }
-          else if folders.isEmpty { SwiftUI.Text("No subfolders here. You can use the current folder.") }
+          else if loaded, error == nil, folders.isEmpty, !path.isEmpty {
+            SwiftUI.Text("No subfolders here. You can use the current folder.")
+          }
           ForEach(folders) { folder in
             SwiftUI.Button { Task { await load(path: path + [folder]) } } label: {
               Label(folder.name, systemImage: "folder")
@@ -238,6 +246,7 @@ struct HarnessDriveFolderPicker: View {
       try Task.checkCancellation()
       path = nextPath
       folders = entries
+      loaded = true
     } catch is CancellationError { }
     catch { self.error = error.localizedDescription }
   }
