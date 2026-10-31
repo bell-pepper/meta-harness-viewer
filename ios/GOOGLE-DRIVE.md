@@ -10,20 +10,15 @@ Harness HUD now has a native Google connection, separate from Apple's Files pick
 2. Configure Google Auth Platform branding, audience and contact details. For an external app in testing, add your Google account as a test user.
 3. Add `https://www.googleapis.com/auth/drive.readonly` to the requested scopes. This grants read-only access across the account, not just the folders selected in Harness HUD. The app's selected-folder restriction is narrower than the Google permission. `drive.file` is not substituted: it does not support browsing arbitrary existing Drive folders in this workflow.
 4. Create an OAuth client of type **iOS**, using the exact bundle identifier you sign in Xcode (**DisplayAccess → Signing & Capabilities**; the committed default is `com.bellpepper.HarnessHUD`). Follow Google's current iOS client requirements. Do not use the web backend's Web application client.
-5. From the repository root, copy the configuration example:
+5. From the repository root on your Mac, run:
 
    ```sh
-   cp ios/GoogleDrive.local.xcconfig.example ios/GoogleDrive.local.xcconfig
+   python3 tools/configure_google_drive.py
    ```
 
-6. Edit the local file to set your full iOS client ID and its reversed URL scheme. For example, a client ID `1234567890-abcdef.apps.googleusercontent.com` has reversed scheme `com.googleusercontent.apps.1234567890-abcdef`.
+6. Paste the full **iOS OAuth client ID** when prompted. The helper writes the ignored local `ios/GoogleDrive.local.xcconfig` and derives the reversed callback scheme automatically, preserving unrelated settings. No client secret is needed. Use the iOS client matching your actual signing bundle identifier; the helper can validate the identifier's format but cannot verify its Google Cloud client type or bundle registration.
 
-   ```xcconfig
-   GOOGLE_IOS_CLIENT_ID = YOUR_FULL_CLIENT_ID.apps.googleusercontent.com
-   GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.YOUR_FULL_CLIENT_ID
-   ```
-
-   Use the actual values from your iOS client. They are public identifiers; **no client secret, access token or refresh token belongs in this file**. The local file is ignored by Git. The checked-in `GoogleDrive.xcconfig` includes it optionally for both Debug and Release. `Info.plist` uses these settings for `GIDClientID` and the Google callback URL scheme. The existing `harnesshud` Meta callback is preserved.
+   For manual configuration instead, copy `ios/GoogleDrive.local.xcconfig.example` to `ios/GoogleDrive.local.xcconfig` and replace both identifiers. A client ID `1234567890-abcdef.apps.googleusercontent.com` has reversed scheme `com.googleusercontent.apps.1234567890-abcdef`. The checked-in `GoogleDrive.xcconfig` includes the local file for Debug and Release. `Info.plist` uses these values for Google sign-in while preserving Meta's `harnesshud` callback.
 
 7. Open `ios/DisplayAccess.xcodeproj`, resolve packages, and build/install. The app pins official **GoogleSignIn-iOS 9.2.0**, with `GoogleSignIn` and `GoogleSignInSwift` products. No Firebase project, server client secret, or hosted backend is required by this implementation.
 
